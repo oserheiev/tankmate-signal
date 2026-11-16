@@ -2,7 +2,9 @@
 
 A World of Tanks mod for friend presence alerts in the hangar and during battle.
 
-The current preview shows a sample notification and plays a chime once in each scene. Live friend presence events go to the game's log under `[TankmateSignal]`.
+Tankmate Signal shows a plate and plays a chime when a friend comes online or goes offline. Status labels follow the game language. Online is green and offline is red. The initial friends list loads silently. Up to three plates appear at once, with later changes waiting for a slot. Diagnostic messages appear in the game log under `[TankmateSignal]`.
+
+While the game is minimized, alerts pause and every friend status change is queued. The queued alerts appear in order when you restore the game and the hangar or battle HUD is visible.
 
 ## Build and install
 

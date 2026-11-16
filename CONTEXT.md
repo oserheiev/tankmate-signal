@@ -17,4 +17,4 @@ A presence notification shown below the left team panel during battle. When that
 A group of up to three presence notifications visible at the same time.
 
 **Pending notification**:
-A presence notification waiting for a slot in the notification stack. Only the latest pending notification for each friend is kept. The remaining notifications appear in the order their status changes were received.
+A presence notification waiting for a slot in the notification stack. When the game window is visible, only the latest pending notification received for each friend while visible is kept. Every change received while minimized is kept. Queued notifications appear in the order their status changes were received once the game window and the hangar or battle HUD are visible.
