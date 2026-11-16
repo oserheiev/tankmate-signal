@@ -36,3 +36,9 @@ python tools/verify_package.py probe/tankmate-signal.wotmod
 ```
 
 `-PackageOnly` builds the archive without writing to the game's mods folder. The verifier checks the manifest, assets, ZIP headers, and checksums. Before distributing a build, try the sample alert in the hangar and in a battle replay, including the countdown, and check a real friend status change while minimized and after restoring the window. Rebuild with the sample flag disabled before sharing the package.
+
+## Release from main
+
+In GitHub, open **Actions → Release main → Run workflow** and select `main`. A run builds and verifies the commit selected when you start it. Enable **Publish a GitHub Release** to create the tagged release, or leave it unchecked to download a test build from the workflow run.
+
+The release tag comes from the manifest version in `Build-AndInstall.ps1`. Bump the version before publishing again. The release includes the `.wotmod` and its SHA-256 checksum. Copy the mod into the active version folder under the game's `mods` directory while WoT is closed. Hosted builds use English status labels. Build from the release source with your installed WoT client to use the client's language.

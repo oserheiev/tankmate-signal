@@ -1,0 +1,111 @@
+name: Release main
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a GitHub Release (unchecked builds and verifies an artifact only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 15
+    outputs:
+      tag: ${{ steps.package.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Run regression tests
+        run: python -B -m unittest discover -s tests -v
+
+      - name: Extract the Python 2.7 compiler
+        shell: pwsh
+        run: |
+          $msi = Join-Path $env:RUNNER_TEMP 'python-2.7.18.amd64.msi'
+          $extracted = Join-Path $env:RUNNER_TEMP 'python27'
+          $uri = 'https://www.python.org/ftp/python/2.7.18/python-2.7.18.amd64.msi'
+          $expected = 'B74A3AFA1E0BF2A6FC566A7B70D15C9BFABBA3756FB077797D16FFFA27800C05'
+          Invoke-WebRequest -Uri $uri -OutFile $msi
+          if ((Get-FileHash -LiteralPath $msi).Hash -ne $expected) {
+              throw 'The Python 2.7 installer checksum does not match.'
+          }
+          $extract = Start-Process -FilePath msiexec.exe -WindowStyle Hidden -PassThru -Wait `
+              -ArgumentList ('/a "{0}" /qn TARGETDIR="{1}"' -f $msi, $extracted)
+          if ($extract.ExitCode -ne 0) {
+              throw "Python 2.7 extraction failed with exit code $($extract.ExitCode)."
+          }
+          $dll = Get-ChildItem -LiteralPath $extracted -Recurse -Filter python27.dll -File |
+              Select-Object -First 1
+          if (-not $dll) { throw 'The Python 2.7 installer did not contain python27.dll.' }
+          $gameRoot = Join-Path $env:RUNNER_TEMP 'tankmate-build'
+          $runtime = New-Item -Path (Join-Path $gameRoot 'win64') -ItemType Directory -Force
+          Copy-Item -LiteralPath $dll.FullName -Destination $runtime.FullName
+          "TANKMATE_GAME_ROOT=$gameRoot" >> $env:GITHUB_ENV
+
+      - name: Build and verify the mod
+        id: package
+        shell: pwsh
+        run: |
+          if (-not (Select-String -LiteralPath 'probe/mod_tankmate_signal.py' -Quiet `
+              -Pattern '^_SHOW_TEST_NOTIFICATION = False$')) {
+              throw 'Disable the test notification before building a release.'
+          }
+          .\Build-AndInstall.ps1 -GameRoot $env:TANKMATE_GAME_ROOT -PackageOnly
+          $version = python -B -c "from tools.verify_package import verify_package; print(verify_package('probe/tankmate-signal.wotmod'))"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Host "Verified Tankmate Signal $version"
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+          $hash = (Get-FileHash -LiteralPath 'probe/tankmate-signal.wotmod').Hash.ToLowerInvariant()
+          $checksum = Join-Path (Get-Location) 'probe/SHA256SUMS.txt'
+          [IO.File]::WriteAllText($checksum, "$hash  tankmate-signal.wotmod`n")
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tankmate-signal-${{ steps.package.outputs.tag }}
+          path: |
+            probe/tankmate-signal.wotmod
+            probe/SHA256SUMS.txt
+          if-no-files-found: error
+
+  publish:
+    if: inputs.publish
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: tankmate-signal-${{ needs.build.outputs.tag }}
+      - name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          sha256sum --check SHA256SUMS.txt
+          refs=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$RELEASE_TAG" --jq '.[].ref')
+          if grep -Fxq "refs/tags/$RELEASE_TAG" <<< "$refs"; then
+            echo "Tag $RELEASE_TAG already exists. Bump the manifest version before releasing again." >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" tankmate-signal.wotmod SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Tankmate Signal $RELEASE_TAG" \
+            --generate-notes \
+            --notes 'This ready-to-install package uses English status labels. To build labels in your game language, download the source for this release and run Build-AndInstall.ps1 against your WoT installation.'
