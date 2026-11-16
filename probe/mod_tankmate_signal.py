@@ -17,7 +17,7 @@ from messenger.proto.events import g_messengerEvents
 from skeletons.gui.app_loader import ApplicationStateID, GuiGlobalSpaceID
 
 
-_PREFIX = '[FriendPresenceProbe]'
+_PREFIX = '[TankmateSignal]'
 _HANGAR_POSITION = (-0.87, -0.06, 0.0)
 _BATTLE_FALLBACK_POSITION = (-0.84, -0.2, 0.0)
 _BATTLE_LEFT_INSET = 0.065

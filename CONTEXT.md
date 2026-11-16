@@ -1,4 +1,4 @@
-# Friend Notifications
+# Tankmate Signal
 
 The World of Tanks mod shows alerts when friends come online or go offline.
 

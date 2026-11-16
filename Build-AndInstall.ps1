@@ -19,8 +19,9 @@ if ($null -eq $latestFolder) {
 
 $pythonDll = (Get-Item -LiteralPath (Join-Path $GameRoot 'win64/python27.dll')).FullName
 $probeRoot = Join-Path $PSScriptRoot 'probe'
-$source = Join-Path $probeRoot 'mod_friend_presence_probe.py'
-$packageName = 'friend-presence-probe.wotmod'
+$moduleName = 'mod_tankmate_signal'
+$source = Join-Path $probeRoot "$moduleName.py"
+$packageName = 'tankmate-signal.wotmod'
 $package = Join-Path $probeRoot $packageName
 $destination = Join-Path $latestFolder.FullName $packageName
 
@@ -103,7 +104,7 @@ import imp
 import marshal
 
 with open(u$sourceLiteral, 'rb') as source:
-    code = compile(source.read().replace('\r\n', '\n'), 'mod_friend_presence_probe.py', 'exec')
+    code = compile(source.read().replace('\r\n', '\n'), '$moduleName.py', 'exec')
 with open(u$bytecodeLiteral, 'wb') as bytecode:
     bytecode.write(imp.get_magic() + '\x00' * 4)
     marshal.dump(code, bytecode)
@@ -117,16 +118,16 @@ with open(u$bytecodeLiteral, 'wb') as bytecode:
             $writer.Write(@'
 <root>
     <id>local.friendpresence.probe</id>
-    <version>0.1.6</version>
-    <name>Friend Presence Probe</name>
-    <description>Temporary friend presence and popup diagnostics</description>
+    <version>0.1.7</version>
+    <name>Tankmate Signal</name>
+    <description>World of Tanks friend presence notification preview</description>
 </root>
 '@)
         } finally {
             $writer.Dispose()
         }
         [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-            $archive, $bytecode, 'res/scripts/client/gui/mods/mod_friend_presence_probe.pyc',
+            $archive, $bytecode, "res/scripts/client/gui/mods/$moduleName.pyc",
             [IO.Compression.CompressionLevel]::NoCompression
         )
     } finally {
