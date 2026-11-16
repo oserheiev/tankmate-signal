@@ -118,7 +118,7 @@ with open(u$bytecodeLiteral, 'wb') as bytecode:
             $writer.Write(@'
 <root>
     <id>local.friendpresence.probe</id>
-    <version>0.1.7</version>
+    <version>0.1.12</version>
     <name>Tankmate Signal</name>
     <description>World of Tanks friend presence notification preview</description>
 </root>
@@ -128,6 +128,11 @@ with open(u$bytecodeLiteral, 'wb') as bytecode:
         }
         [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
             $archive, $bytecode, "res/scripts/client/gui/mods/$moduleName.pyc",
+            [IO.Compression.CompressionLevel]::NoCompression
+        )
+        [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+            $archive, (Join-Path $probeRoot 'tankmate-plate.dds'),
+            'res/gui/maps/icons/tankmate_signal/tankmate-plate.dds',
             [IO.Compression.CompressionLevel]::NoCompression
         )
     } finally {
