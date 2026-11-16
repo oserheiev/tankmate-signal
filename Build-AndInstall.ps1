@@ -2,7 +2,8 @@
 
 [CmdletBinding()]
 param(
-    [string] $GameRoot = 'D:\Games\Wargaming.net\World_of_Tanks_EU'
+    [string] $GameRoot = 'D:\Games\Wargaming.net\World_of_Tanks_EU',
+    [switch] $PackageOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -71,23 +72,29 @@ function Write-StatusTexture([string] $Text, [Drawing.Color] $Color, [string] $P
     }
 }
 
-$modsRoot = Join-Path $GameRoot 'mods'
-$latestFolder = Get-ChildItem -LiteralPath $modsRoot -Directory |
-    Where-Object { [version]::TryParse($_.Name, [ref] $null) } |
-    Sort-Object -Property { [version] $_.Name } -Descending |
-    Select-Object -First 1
-
-if ($null -eq $latestFolder) {
-    throw "No numbered World of Tanks mod folders were found in '$modsRoot'."
+$pythonDll = Join-Path $GameRoot 'win64/python27.dll'
+if (-not (Test-Path -LiteralPath $pythonDll -PathType Leaf)) {
+    throw "World of Tanks Python runtime not found at '$pythonDll'. Pass the game installation folder with -GameRoot."
 }
-
-$pythonDll = (Get-Item -LiteralPath (Join-Path $GameRoot 'win64/python27.dll')).FullName
+$pythonDll = (Get-Item -LiteralPath $pythonDll).FullName
 $probeRoot = Join-Path $PSScriptRoot 'probe'
 $moduleName = 'mod_tankmate_signal'
 $source = Join-Path $probeRoot "$moduleName.py"
 $packageName = 'tankmate-signal.wotmod'
 $package = Join-Path $probeRoot $packageName
-$destination = Join-Path $latestFolder.FullName $packageName
+$installStaging = $null
+if (-not $PackageOnly) {
+    $modsRoot = Join-Path $GameRoot 'mods'
+    $latestFolder = Get-ChildItem -LiteralPath $modsRoot -Directory |
+        Where-Object { [version]::TryParse($_.Name, [ref] $null) } |
+        Sort-Object -Property { [version] $_.Name } -Descending |
+        Select-Object -First 1
+    if ($null -eq $latestFolder) {
+        throw "No numbered World of Tanks mod folders were found in '$modsRoot'."
+    }
+    $destination = Join-Path $latestFolder.FullName $packageName
+    $installStaging = "$destination.$([guid]::NewGuid().ToString('N')).tmp"
+}
 
 if (-not ('WotProbePython' -as [type])) {
     Add-Type -TypeDefinition @'
@@ -243,7 +250,6 @@ $bytecode = [IO.Path]::GetTempFileName()
 $onlineImage = [IO.Path]::GetTempFileName()
 $offlineImage = [IO.Path]::GetTempFileName()
 $buildStaging = "$package.$([guid]::NewGuid().ToString('N')).tmp"
-$installStaging = "$destination.$([guid]::NewGuid().ToString('N')).tmp"
 try {
     if ($PSVersionTable.PSEdition -eq 'Desktop') {
         Add-Type -AssemblyName System.Drawing
@@ -280,6 +286,10 @@ with open(u$bytecodeLiteral, 'wb') as bytecode:
         (Join-Path $probeRoot 'tankmate-plate.dds'), (Join-Path $probeRoot 'tankmate-plate-offline.dds'))
 
     Publish-Package $buildStaging $package
+    Write-Output "Packaged $package"
+    if ($PackageOnly) {
+        return
+    }
     [IO.File]::Copy($package, $installStaging)
     try {
         Publish-Package $installStaging $destination
@@ -290,11 +300,10 @@ with open(u$bytecodeLiteral, 'wb') as bytecode:
         }
         throw
     }
-    Write-Output "Packaged $package"
     Write-Output "Installed $destination"
 } finally {
     foreach ($temporaryFile in $bytecode, $onlineImage, $offlineImage, $buildStaging, $installStaging) {
-        if (Test-Path -LiteralPath $temporaryFile) {
+        if ($temporaryFile -and (Test-Path -LiteralPath $temporaryFile)) {
             Remove-Item -LiteralPath $temporaryFile
         }
     }

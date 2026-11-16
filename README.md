@@ -8,15 +8,31 @@ While the game is minimized, alerts pause and every friend status change is queu
 
 ## Build and install
 
-Close World of Tanks, then run this from the project folder in Windows PowerShell 5.1 or PowerShell 7.
+Close World of Tanks. Open 64-bit Windows PowerShell 5.1 or PowerShell 7 in the project folder and pass the folder containing the game's `win64` and `mods` directories.
 
 ```powershell
-.\Build-AndInstall.ps1 -GameRoot 'D:\Games\Wargaming.net\World_of_Tanks_EU'
+$gameRoot = 'C:\Games\World_of_Tanks_EU'
+.\Build-AndInstall.ps1 -GameRoot $gameRoot
 ```
 
-The script builds `probe/tankmate-signal.wotmod` and installs it into the highest-numbered folder under the game's `mods` directory.
-Run it again after changing the game language to refresh the banner's localized status labels.
+The script uses the installed client's Python runtime and translation catalog. It builds `probe/tankmate-signal.wotmod` and installs it into the highest-numbered folder under the game's `mods` directory. Rerun it after updating the client or changing its language.
+
+To uninstall, close WoT and remove `tankmate-signal.wotmod` from the corresponding game version's `mods` directory.
 
 ## Test the notification
 
 Set `_SHOW_TEST_NOTIFICATION = True` near the top of `probe/mod_tankmate_signal.py`, then rebuild, install, and launch the game. One sample alert appears when the hangar or battle HUD is visible. Set it back to `False` and rebuild to disable the sample.
+
+If the sample is missing, search the game's `game.log` for `tankmate-signal.wotmod` to check whether WoT accepted the package, then for `[TankmateSignal]` to check mod initialization and alerts. A `compression not supported` error means the package should be rebuilt with this installer. WoT Safe Mode disables mods.
+
+## Development checks
+
+The regression tests use Python 3 and mock the WoT client API. GitHub Actions runs them on pushes and pull requests.
+
+```powershell
+python -B -m unittest discover -s tests -v
+.\Build-AndInstall.ps1 -GameRoot $gameRoot -PackageOnly
+python tools/verify_package.py probe/tankmate-signal.wotmod
+```
+
+`-PackageOnly` builds the archive without writing to the game's mods folder. The verifier checks the manifest, assets, ZIP headers, and checksums. Before distributing a build, try the sample alert in the hangar and in a battle replay, including the countdown, and check a real friend status change while minimized and after restoring the window. Rebuild with the sample flag disabled before sharing the package.

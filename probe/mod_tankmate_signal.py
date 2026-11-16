@@ -104,7 +104,7 @@ class FriendPresence(object):
                         USER_ACTION_ID.TMP_IGNORED_ADDED):
             friend_id = user.getStorageKey()
             self.online.pop(friend_id, None)
-            for key in self.pending.keys():
+            for key in list(self.pending):
                 if key[0] == friend_id:
                     del self.pending[key]
 
