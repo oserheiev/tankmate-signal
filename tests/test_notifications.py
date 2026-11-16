@@ -24,6 +24,7 @@ def load_mod(test_alert=False):
     window = stub("BigWorld", time=Mock(return_value=0.0), callback=Mock(),
                   isWindowVisible=Mock(return_value=True))
     stub("GUI")
+    stub("ResMgr", isFile=Mock())
     stub("SoundGroups")
     stub("PlayerEvents", g_playerEvents=Mock())
     stub("gui.app_loader.settings", APP_NAME_SPACE=Mock())
@@ -31,6 +32,7 @@ def load_mod(test_alert=False):
     stub("gui.Scaleform.genConsts.PLAYERS_PANEL_STATE", PLAYERS_PANEL_STATE=Mock())
     stub("gui.Scaleform.Waiting", Waiting=Mock())
     stub("gui.shared.personality", ServicesLocator=Mock())
+    stub("helpers", getClientLanguage=Mock(return_value="en"))
     stub("helpers.gui_utils", setPixMode=Mock())
     stub("messenger.m_constants", PROTO_TYPE=Mock(), USER_TAG=Mock(),
          USER_ACTION_ID=SimpleNamespace(FRIEND_ADDED=1, FRIEND_REMOVED=2,
@@ -143,6 +145,21 @@ class NotificationTests(unittest.TestCase):
         self.mod._visible_scene.return_value = "hangar"
         self.tick()
         self.mod._show_notification.assert_not_called()
+
+    def test_status_uses_bundled_locale_with_english_fallback(self):
+        self.configure()
+        self.mod.ResMgr.isFile.side_effect = lambda name: name.endswith(
+            ("status-uk-online.png", "status-zh-tw-offline.png")
+        )
+        for language, online, filename in (
+            ("uk-UA", True, "status-uk-online.png"),
+            ("zh_Hant", False, "status-zh-tw-offline.png"),
+            ("invalid", False, "status-en-offline.png"),
+        ):
+            with self.subTest(language=language):
+                self.mod.getClientLanguage.return_value = language
+                self.assertEqual(self.mod._status_texture(online),
+                                 self.mod._PLATE_TEXTURE_ROOT + filename)
 
     def test_sample_fires_once_on_the_ready_battle_hud(self):
         self.configure(test_alert=True)

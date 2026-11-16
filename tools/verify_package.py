@@ -1,6 +1,7 @@
 """Check a built Tankmate Signal archive before installing or distributing it."""
 
 import argparse
+import json
 from pathlib import Path
 import re
 import struct
@@ -14,9 +15,11 @@ ASSETS = {
     MODULE: b"\x03\xf3\r\n",  # Python 2.7 bytecode magic
     TEXTURES + "tankmate-plate.dds": b"DDS ",
     TEXTURES + "tankmate-plate-offline.dds": b"DDS ",
-    TEXTURES + "status-online.png": b"\x89PNG\r\n\x1a\n",
-    TEXTURES + "status-offline.png": b"\x89PNG\r\n\x1a\n",
 }
+LABELS = Path(__file__).resolve().parents[1] / "probe" / "status-labels.json"
+for _locale in json.loads(LABELS.read_text(encoding="utf-8")):
+    for _state in ("online", "offline"):
+        ASSETS[f"{TEXTURES}status-{_locale}-{_state}.png"] = b"\x89PNG\r\n\x1a\n"
 MANIFEST = "meta.xml"
 
 

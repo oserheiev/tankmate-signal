@@ -25,32 +25,6 @@ function Publish-Package([string] $Staging, [string] $Destination) {
     }
 }
 
-function Get-StatusLabels([string] $Catalog) {
-    $labels = @{ 'status/online' = 'Online'; 'status/offline' = 'Offline' }
-    if (Test-Path -LiteralPath $Catalog) {
-        $bytes = [IO.File]::ReadAllBytes($Catalog)
-        if ([BitConverter]::ToInt32($bytes, 0) -ne -1794895138) {
-            throw "Unsupported messenger translation catalog at '$Catalog'."
-        }
-        $count = [BitConverter]::ToInt32($bytes, 8)
-        $keys = [BitConverter]::ToInt32($bytes, 12)
-        $translations = [BitConverter]::ToInt32($bytes, 16)
-        $utf8 = [Text.Encoding]::UTF8
-        for ($i = 0; $i -lt $count; $i++) {
-            $keyEntry = $keys + 8 * $i
-            $key = $utf8.GetString($bytes, [BitConverter]::ToInt32($bytes, $keyEntry + 4),
-                [BitConverter]::ToInt32($bytes, $keyEntry))
-            if ($labels.ContainsKey($key)) {
-                $valueEntry = $translations + 8 * $i
-                $value = $utf8.GetString($bytes, [BitConverter]::ToInt32($bytes, $valueEntry + 4),
-                    [BitConverter]::ToInt32($bytes, $valueEntry))
-                if ($value) { $labels[$key] = $value }
-            }
-        }
-    }
-    $labels
-}
-
 function Write-StatusTexture([string] $Text, [Drawing.Color] $Color, [string] $Path) {
     $bitmap = [Drawing.Bitmap]::new(320, 44)
     $graphics = [Drawing.Graphics]::FromImage($bitmap)
@@ -78,6 +52,10 @@ if (-not (Test-Path -LiteralPath $pythonDll -PathType Leaf)) {
 }
 $pythonDll = (Get-Item -LiteralPath $pythonDll).FullName
 $probeRoot = Join-Path $PSScriptRoot 'probe'
+$version = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'VERSION')).Trim()
+if ($version -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
+    throw "VERSION must contain a major.minor.patch version."
+}
 $moduleName = 'mod_tankmate_signal'
 $source = Join-Path $probeRoot "$moduleName.py"
 $packageName = 'tankmate-signal.wotmod'
@@ -165,17 +143,17 @@ public static class WotProbePython
 
     // The WoT mod loader requires ZIP method 0. .NET Framework emits method 8
     // even when ZipArchive is given CompressionLevel.NoCompression.
-    public static void WritePackage(string path, string manifest, string modulePath, string bytecodePath,
-        string onlineImage, string offlineImage, string onlinePlate, string offlinePlate)
+    public static void WritePackage(string path, string manifest, string[] assetNames, string[] assetPaths)
     {
-        byte[][] names = { Encoding.ASCII.GetBytes("meta.xml"), Encoding.ASCII.GetBytes(modulePath),
-            Encoding.ASCII.GetBytes("res/gui/maps/icons/tankmate_signal/status-online.png"),
-            Encoding.ASCII.GetBytes("res/gui/maps/icons/tankmate_signal/status-offline.png"),
-            Encoding.ASCII.GetBytes("res/gui/maps/icons/tankmate_signal/tankmate-plate.dds"),
-            Encoding.ASCII.GetBytes("res/gui/maps/icons/tankmate_signal/tankmate-plate-offline.dds") };
-        byte[][] contents = { Encoding.UTF8.GetBytes(manifest), File.ReadAllBytes(bytecodePath),
-            File.ReadAllBytes(onlineImage), File.ReadAllBytes(offlineImage),
-            File.ReadAllBytes(onlinePlate), File.ReadAllBytes(offlinePlate) };
+        byte[][] names = new byte[assetNames.Length + 1][];
+        byte[][] contents = new byte[names.Length][];
+        names[0] = Encoding.ASCII.GetBytes("meta.xml");
+        contents[0] = Encoding.UTF8.GetBytes(manifest);
+        for (int i = 0; i < assetNames.Length; ++i)
+        {
+            names[i + 1] = Encoding.ASCII.GetBytes(assetNames[i]);
+            contents[i + 1] = File.ReadAllBytes(assetPaths[i]);
+        }
         uint[] offsets = new uint[names.Length];
         uint[] checksums = new uint[names.Length];
         using (var writer = new BinaryWriter(File.Open(path, FileMode.CreateNew)))
@@ -247,8 +225,8 @@ public static class WotProbePython
 }
 
 $bytecode = [IO.Path]::GetTempFileName()
-$onlineImage = [IO.Path]::GetTempFileName()
-$offlineImage = [IO.Path]::GetTempFileName()
+$statusImages = [ordered]@{}
+$textureRoot = 'res/gui/maps/icons/tankmate_signal'
 $buildStaging = "$package.$([guid]::NewGuid().ToString('N')).tmp"
 try {
     if ($PSVersionTable.PSEdition -eq 'Desktop') {
@@ -256,9 +234,25 @@ try {
     } else {
         Add-Type -AssemblyName System.Drawing.Common
     }
-    $labels = Get-StatusLabels (Join-Path $GameRoot 'res/text/lc_messages/messenger.mo')
-    Write-StatusTexture $labels['status/online'] ([Drawing.Color]::FromArgb(156, 194, 128)) $onlineImage
-    Write-StatusTexture $labels['status/offline'] ([Drawing.Color]::FromArgb(225, 109, 93)) $offlineImage
+    $labels = Get-Content -LiteralPath (Join-Path $probeRoot 'status-labels.json') -Raw -Encoding UTF8 |
+        ConvertFrom-Json
+    if (-not $labels.en) { throw 'The status label catalog must contain an English fallback.' }
+    $onlineColor = [Drawing.Color]::FromArgb(156, 194, 128)
+    $offlineColor = [Drawing.Color]::FromArgb(225, 109, 93)
+    foreach ($language in ($labels.PSObject.Properties | Sort-Object Name)) {
+        $locale = $language.Name
+        $pair = $language.Value
+        if ($locale -cnotmatch '^[a-z]{2}(-[a-z]{2})?$' -or $pair.Count -ne 2 -or
+            [string]::IsNullOrWhiteSpace($pair[0]) -or [string]::IsNullOrWhiteSpace($pair[1])) {
+            throw "Invalid status labels for '$locale'."
+        }
+        $onlinePath = "$textureRoot/status-$locale-online.png"
+        $offlinePath = "$textureRoot/status-$locale-offline.png"
+        $statusImages[$onlinePath] = [IO.Path]::GetTempFileName()
+        $statusImages[$offlinePath] = [IO.Path]::GetTempFileName()
+        Write-StatusTexture $pair[0] $onlineColor $statusImages[$onlinePath]
+        Write-StatusTexture $pair[1] $offlineColor $statusImages[$offlinePath]
+    }
 
     $sourceLiteral = ConvertTo-PythonPathLiteral $source
     $bytecodeLiteral = ConvertTo-PythonPathLiteral $bytecode
@@ -273,17 +267,21 @@ with open(u$bytecodeLiteral, 'wb') as bytecode:
     marshal.dump(code, bytecode)
 "@)
 
-    $manifest = @'
+    $manifest = @"
 <root>
     <id>local.friendpresence.probe</id>
-    <version>0.1.21</version>
+    <version>$version</version>
     <name>Tankmate Signal</name>
     <description>World of Tanks friend presence notifications</description>
 </root>
-'@
-    [WotProbePython]::WritePackage($buildStaging, $manifest, "res/scripts/client/gui/mods/$moduleName.pyc",
-        $bytecode, $onlineImage, $offlineImage,
-        (Join-Path $probeRoot 'tankmate-plate.dds'), (Join-Path $probeRoot 'tankmate-plate-offline.dds'))
+"@
+    $assets = [ordered]@{
+        "res/scripts/client/gui/mods/$moduleName.pyc" = $bytecode
+        "$textureRoot/tankmate-plate.dds" = Join-Path $probeRoot 'tankmate-plate.dds'
+        "$textureRoot/tankmate-plate-offline.dds" = Join-Path $probeRoot 'tankmate-plate-offline.dds'
+    }
+    foreach ($name in $statusImages.Keys) { $assets[$name] = $statusImages[$name] }
+    [WotProbePython]::WritePackage($buildStaging, $manifest, $assets.Keys, $assets.Values)
 
     Publish-Package $buildStaging $package
     Write-Output "Packaged $package"
@@ -302,7 +300,7 @@ with open(u$bytecodeLiteral, 'wb') as bytecode:
     }
     Write-Output "Installed $destination"
 } finally {
-    foreach ($temporaryFile in $bytecode, $onlineImage, $offlineImage, $buildStaging, $installStaging) {
+    foreach ($temporaryFile in (@($bytecode, $buildStaging, $installStaging) + @($statusImages.Values))) {
         if ($temporaryFile -and (Test-Path -LiteralPath $temporaryFile)) {
             Remove-Item -LiteralPath $temporaryFile
         }

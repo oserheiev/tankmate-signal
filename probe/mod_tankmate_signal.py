@@ -6,6 +6,7 @@ from collections import OrderedDict
 
 import BigWorld
 import GUI
+import ResMgr
 import SoundGroups
 from PlayerEvents import g_playerEvents
 
@@ -14,6 +15,7 @@ from gui.Scaleform.daapi.view.battle.shared.page import SharedPage
 from gui.Scaleform.genConsts.PLAYERS_PANEL_STATE import PLAYERS_PANEL_STATE
 from gui.Scaleform.Waiting import Waiting
 from gui.shared.personality import ServicesLocator
+from helpers import getClientLanguage
 from helpers.gui_utils import setPixMode
 from messenger.m_constants import PROTO_TYPE, USER_ACTION_ID, USER_TAG
 from messenger.proto.events import g_messengerEvents
@@ -112,6 +114,21 @@ class FriendPresence(object):
 _presence = FriendPresence()
 
 
+def _status_texture(online):
+    locale = (getClientLanguage() or 'en').lower().replace('_', '-')
+    if locale in ('zh', 'zh-hans', 'zh-sg', 'zh-cn-sg'):
+        locale = 'zh-cn'
+    elif locale in ('zh-hant', 'zh-hk', 'zh-mo'):
+        locale = 'zh-tw'
+    suffix = 'online.png' if online else 'offline.png'
+    if locale.replace('-', '').isalnum():
+        for candidate in (locale, locale.split('-', 1)[0]):
+            texture = _PLATE_TEXTURE_ROOT + 'status-' + candidate + '-' + suffix
+            if ResMgr.isFile(texture):
+                return texture
+    return _PLATE_TEXTURE_ROOT + 'status-en-' + suffix
+
+
 class NotificationPlate(object):
     def __init__(self, name, online, shown_at):
         screen_width, screen_height = GUI.screenResolution()
@@ -127,8 +144,7 @@ class NotificationPlate(object):
         self.name.font = 'default_medium.font'
         self.name.colour = (238, 237, 233, 255)
         name_width, self.name_height = self.name.stringDimensions(name)
-        status_image = 'status-online.png' if online else 'status-offline.png'
-        self.status = GUI.Simple(_PLATE_TEXTURE_ROOT + status_image)
+        self.status = GUI.Simple(_status_texture(online))
         self._set_pixel_layout(self.status)
         self.status.materialFX = GUI.Simple.eMaterialFX.BLEND
         status_width = round(_STATUS_WIDTH * self.scale)

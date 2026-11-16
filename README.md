@@ -15,7 +15,7 @@ $gameRoot = 'C:\Games\World_of_Tanks_EU'
 .\Build-AndInstall.ps1 -GameRoot $gameRoot
 ```
 
-The script uses the installed client's Python runtime and translation catalog. It builds `probe/tankmate-signal.wotmod` and installs it into the highest-numbered folder under the game's `mods` directory. Rerun it after updating the client or changing its language.
+The script uses the installed client's Python runtime. It builds `probe/tankmate-signal.wotmod` and installs it into the highest-numbered folder under the game's `mods` directory. Rerun it after updating the client. The package includes its own translations from `probe/status-labels.json` and uses the current game language when available, with an English fallback.
 
 To uninstall, close WoT and remove `tankmate-signal.wotmod` from the corresponding game version's `mods` directory.
 
@@ -39,6 +39,6 @@ python tools/verify_package.py probe/tankmate-signal.wotmod
 
 ## Release from main
 
-In GitHub, open **Actions → Release main → Run workflow** and select `main`. A run builds and verifies the commit selected when you start it. Enable **Publish a GitHub Release** to create the tagged release, or leave it unchecked to download a test build from the workflow run.
+In GitHub, open **Actions → Release main → Run workflow** and select `main`. Choose `patch`, `minor`, or `major` to increase the version, or `none` to keep the version in `VERSION`. Leave **Publish a GitHub Release** unchecked to build a test artifact without changing `main`.
 
-The release tag comes from the manifest version in `Build-AndInstall.ps1`. Bump the version before publishing again. The release includes the `.wotmod` and its SHA-256 checksum. Copy the mod into the active version folder under the game's `mods` directory while WoT is closed. Hosted builds use English status labels. Build from the release source with your installed WoT client to use the client's language.
+A publish run verifies the package, commits the new version to `main`, and tags the release commit. Each release includes the multilingual `.wotmod` and its SHA-256 checksum. Copy the mod into the active version folder under the game's `mods` directory while WoT is closed.
