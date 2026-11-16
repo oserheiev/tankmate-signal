@@ -13,9 +13,7 @@ from gui.app_loader.settings import APP_NAME_SPACE
 from gui.Scaleform.daapi.view.battle.shared.page import SharedPage
 from gui.Scaleform.genConsts.PLAYERS_PANEL_STATE import PLAYERS_PANEL_STATE
 from gui.Scaleform.Waiting import Waiting
-from gui.Scaleform.locale.MESSENGER import MESSENGER
 from gui.shared.personality import ServicesLocator
-from helpers import i18n
 from helpers.gui_utils import setPixMode
 from messenger.m_constants import PROTO_TYPE, USER_ACTION_ID, USER_TAG
 from messenger.proto.events import g_messengerEvents
@@ -23,6 +21,9 @@ from messenger.proto.shared_find_criteria import FriendsFindCriteria
 from messenger.storage import MessengerStorageDescriptor, UsersStorage
 from skeletons.gui.app_loader import ApplicationStateID, GuiGlobalSpaceID
 
+
+# Enable this before building to show a sample alert once when the HUD is ready.
+_SHOW_TEST_NOTIFICATION = False
 
 _PREFIX = '[TankmateSignal]'
 _HANGAR_POSITION = (-0.96, -0.06, 0.0)
@@ -32,6 +33,10 @@ _BATTLE_ANCHOR_COMPONENTS = ('playersPanel', 'battleMessenger', 'damagePanel')
 _PLATE_TEXTURE_ROOT = 'gui/maps/icons/tankmate_signal/'
 _PLATE_WIDTH = 222.0
 _PLATE_HEIGHT = 52.0
+_TEXT_INSET = 54.0
+_TEXT_RIGHT_PADDING = 13.0
+_STATUS_WIDTH = 160.0
+_STATUS_HEIGHT = 22.0
 _STACK_LIMIT = 3
 _SHOW_DURATION = 5.0
 _ROSTER_QUIET_TIME = 1.5
@@ -44,6 +49,7 @@ _original_register_component = None
 _callback = None
 _visible_popups = []
 _scene = None
+_test_notification_pending = _SHOW_TEST_NOTIFICATION
 
 
 class FriendPresence(object):
@@ -116,38 +122,36 @@ class NotificationPlate(object):
         self.sound = None
         self.paused_at = None
 
-        status_key = MESSENGER.STATUS_ONLINE if online else MESSENGER.STATUS_OFFLINE
-        status = i18n.makeString(status_key)
-        if not status or status == status_key:
-            status = 'Online' if online else 'Offline'
-        status_colour = (100, 186, 33, 255) if online else (207, 76, 62, 255)
-        self.name = self._text(name, 'default_medium.font', (238, 237, 233, 255))
-        self.status = self._text(status, 'default_smaller.font', status_colour)
+        self.name = GUI.Text(name)
+        self._set_pixel_layout(self.name)
+        self.name.font = 'default_medium.font'
+        self.name.colour = (238, 237, 233, 255)
         name_width, self.name_height = self.name.stringDimensions(name)
-        status_width, status_height = self.status.stringDimensions(status)
+        status_image = 'status-online.png' if online else 'status-offline.png'
+        self.status = GUI.Simple(_PLATE_TEXTURE_ROOT + status_image)
+        self._set_pixel_layout(self.status)
+        self.status.materialFX = GUI.Simple.eMaterialFX.BLEND
+        status_width = round(_STATUS_WIDTH * self.scale)
+        status_height = round(_STATUS_HEIGHT * self.scale)
+        self.status.size = (status_width, status_height)
         self.line_gap = round(1.0 * self.scale)
         self.text_height = self.name_height + self.line_gap + status_height
         self.height = max(_PLATE_HEIGHT * self.scale, self.text_height + 10.0 * self.scale)
-        self.width = max(_PLATE_WIDTH * self.scale, max(name_width, status_width) + 67.0 * self.scale)
+        text_padding = (_TEXT_INSET + _TEXT_RIGHT_PADDING) * self.scale
+        self.width = max(_PLATE_WIDTH * self.scale, max(name_width, status_width) + text_padding)
         if self.width >= screen_width / 2.0 or self.height >= screen_height / 8.0:
             raise ValueError('Notification plate exceeds the viewport limits')
 
-        texture = 'tankmate-plate.dds' if online else 'tankmate-plate-offline.dds'
-        self.backdrop = GUI.Simple(_PLATE_TEXTURE_ROOT + texture)
+        backdrop_image = 'tankmate-plate.dds' if online else 'tankmate-plate-offline.dds'
+        self.backdrop = GUI.Simple(_PLATE_TEXTURE_ROOT + backdrop_image)
         self._set_pixel_layout(self.backdrop)
         self.backdrop.materialFX = GUI.Simple.eMaterialFX.BLEND
         self.backdrop.size = (self.width, self.height)
         if (abs(self.backdrop.width - self.width) > 1.0
                 or abs(self.backdrop.height - self.height) > 1.0):
             raise ValueError('The game did not apply the notification plate dimensions')
-        self.components = (self.backdrop, self.name, self.status)
-
-    def _text(self, value, font, colour):
-        label = GUI.Text(value)
-        self._set_pixel_layout(label)
-        label.font = font
-        label.colour = colour
-        return label
+        self.backdrop.addChild(self.name, 'friendName')
+        self.backdrop.addChild(self.status, 'friendStatus')
 
     @staticmethod
     def _set_pixel_layout(component):
@@ -164,21 +168,13 @@ class NotificationPlate(object):
         y = (1.0 - position[1]) * screen_height / 2.0 + stack_offset
         y = round(max(0.0, min(y, screen_height - self.height)))
         self.backdrop.position = (x, y, 0.3)
-        text_x = x + round(58.0 * self.width / 240.0)
+        text_x = x + round(_TEXT_INSET * self.scale)
         text_y = y + round((self.height - self.text_height) / 2.0)
         self.name.position = (text_x, text_y, 0.1)
         self.status.position = (text_x, text_y + self.name_height + self.line_gap, 0.1)
 
     def show(self):
-        added = []
-        try:
-            for component in self.components:
-                GUI.addRoot(component)
-                added.append(component)
-        except Exception:
-            for component in reversed(added):
-                GUI.delRoot(component)
-            raise
+        GUI.addRoot(self.backdrop)
 
     def update_position(self, position, now, stack_offset):
         frame_delta = max(0.0, now - self.frame_time)
@@ -194,8 +190,7 @@ class NotificationPlate(object):
     def hide(self):
         if self.paused_at is not None:
             return
-        for component in reversed(self.components):
-            GUI.delRoot(component)
+        GUI.delRoot(self.backdrop)
 
     def pause(self, now):
         if self.paused_at is not None:
@@ -395,7 +390,7 @@ def _layout_notifications(scene, position, now):
 
 
 def _tick():
-    global _callback, _scene
+    global _callback, _scene, _test_notification_pending
     try:
         scene = _visible_scene()
         now = BigWorld.time()
@@ -414,7 +409,8 @@ def _tick():
             if now >= popup.expires_at:
                 popup.hide()
                 _visible_popups.remove(popup)
-        if scene in ('hangar', 'battle') and (_visible_popups or _presence.pending):
+        if scene in ('hangar', 'battle') and (
+                _visible_popups or _presence.pending or _test_notification_pending):
             position, anchor = (_battle_popup_anchor() if scene == 'battle'
                                 else (_HANGAR_POSITION, 'hangar'))
             if position is None:
@@ -423,6 +419,9 @@ def _tick():
                 while len(_visible_popups) < _STACK_LIMIT and _presence.pending:
                     _, (name, online) = _presence.pending.popitem(last=False)
                     _show_notification(name, online, scene, now, position, anchor)
+                if _test_notification_pending and len(_visible_popups) < _STACK_LIMIT:
+                    _test_notification_pending = False
+                    _show_notification('Test notification', True, scene, now, position, anchor)
                 _layout_notifications(scene, position, now)
     except Exception:
         _log('display check failed')
