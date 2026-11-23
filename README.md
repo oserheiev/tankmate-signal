@@ -6,6 +6,20 @@ Tankmate Signal shows a plate and plays a chime when a friend comes online or go
 
 While the game is minimized, alerts pause and every friend status change is queued. The queued alerts appear in order when you restore the game and the hangar or battle HUD is visible.
 
+Online alerts include a message button in the Garage and battle. Hold Ctrl to use the mouse during battle, or press **Ctrl+T** while the alert is visible to message the player on the most recently displayed alert. Holding the shortcut sends once. The button shows when the message has been submitted, when you can retry, or when the recipient lookup is unavailable. Hovering over the button keeps the alert visible while you use it.
+
+Notifications use an angular panel with a profile silhouette, colored status indicator, and a bronze message area. Clan tags appear beside the nickname when available from the game's contact data.
+
+The button and message follow the current game language, with English as a fallback. The message asks to play in a Platoon and mentions that you are in battle when sent during battle.
+
+To change the shortcut in the Garage, open **Mod Menu → Tankmate Signal**, select **Message hotkey**, press the combination you want, and click **Apply**. The new shortcut works immediately and is saved for future launches. Clearing the binding disables the shortcut.
+
+Press **Ctrl+F9** for Sauzer_'s online test notification or **Ctrl+F10** for the offline test notification, regardless of their actual status. These combinations are reserved for testing.
+
+The Garage settings window uses [Aslain Mod Menu](https://github.com/Aslain/modmenu/releases) and its [OpenWG Gameface loader](https://gitlab.com/openwg/wot.gameface/-/releases). Install their `.wotmod` packages alongside Tankmate Signal in the active game version's `mods` folder. The mod also supports an installed `gui.modsSettingsApi` provider.
+
+Without a settings-menu provider, the mod reads `whisper_hotkey` from `mods/configs/tankmate_signal.json`, for example `{ "whisper_hotkey": "CTRL+T" }`. The installer creates this fallback file. Saved Mod Menu settings take precedence when the menu is installed.
+
 ## Build and install
 
 Close World of Tanks. Open 64-bit Windows PowerShell 5.1 or PowerShell 7 in the project folder and pass the folder containing the game's `win64` and `mods` directories.
