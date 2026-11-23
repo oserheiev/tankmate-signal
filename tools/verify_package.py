@@ -13,13 +13,19 @@ MODULE = "res/scripts/client/gui/mods/mod_tankmate_signal.pyc"
 TEXTURES = "res/gui/maps/icons/tankmate_signal/"
 ASSETS = {
     MODULE: b"\x03\xf3\r\n",  # Python 2.7 bytecode magic
-    TEXTURES + "tankmate-plate.dds": b"DDS ",
-    TEXTURES + "tankmate-plate-offline.dds": b"DDS ",
+    TEXTURES + "plate.png": b"\x89PNG\r\n\x1a\n",
+    TEXTURES + "profile-online.png": b"\x89PNG\r\n\x1a\n",
+    TEXTURES + "profile-offline.png": b"\x89PNG\r\n\x1a\n",
+    TEXTURES + "shortcut-keycap.png": b"\x89PNG\r\n\x1a\n",
+    TEXTURES + "status-rule.png": b"\x89PNG\r\n\x1a\n",
+    TEXTURES + "whisper-labels.json": b"{",
 }
 LABELS = Path(__file__).resolve().parents[1] / "probe" / "status-labels.json"
 for _locale in json.loads(LABELS.read_text(encoding="utf-8")):
     for _state in ("online", "offline"):
         ASSETS[f"{TEXTURES}status-{_locale}-{_state}.png"] = b"\x89PNG\r\n\x1a\n"
+    for _state in ("ready", "ready-hover", "sent", "retry", "retry-hover", "pending", "unavailable"):
+        ASSETS[f"{TEXTURES}whisper-{_locale}-{_state}.png"] = b"\x89PNG\r\n\x1a\n"
 MANIFEST = "meta.xml"
 
 

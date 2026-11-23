@@ -1,11 +1,15 @@
 """Display World of Tanks friend presence changes in the hangar and battle HUD."""
 
+import json
 import traceback
 import weakref
-from collections import OrderedDict
+from collections import OrderedDict, deque
 
+import BattleReplay
 import BigWorld
 import GUI
+import Keys
+import game
 import ResMgr
 import SoundGroups
 from PlayerEvents import g_playerEvents
@@ -15,13 +19,19 @@ from gui.Scaleform.daapi.view.battle.shared.page import SharedPage
 from gui.Scaleform.genConsts.PLAYERS_PANEL_STATE import PLAYERS_PANEL_STATE
 from gui.Scaleform.Waiting import Waiting
 from gui.shared.personality import ServicesLocator
-from helpers import getClientLanguage
+from gui import SystemMessages
+from helpers import dependency, getClientLanguage
 from helpers.gui_utils import setPixMode
 from messenger.m_constants import PROTO_TYPE, USER_ACTION_ID, USER_TAG
+from messenger.proto import proto_getter
 from messenger.proto.events import g_messengerEvents
+from messenger.proto.interfaces import ISearchHandler
 from messenger.proto.shared_find_criteria import FriendsFindCriteria
+from messenger.proto.xmpp.jid import makeContactJID
+from messenger.proto.xmpp.xmpp_search_processors import SearchUsersProcessor
 from messenger.storage import MessengerStorageDescriptor, UsersStorage
 from skeletons.gui.app_loader import ApplicationStateID, GuiGlobalSpaceID
+from skeletons.gui.game_control import IGameSessionController
 
 
 # Enable this before building to show a sample alert once when the HUD is ready.
@@ -33,10 +43,10 @@ _BATTLE_FALLBACK_POSITION = (-0.95, -0.2, 0.0)
 _BATTLE_LEFT_INSET = 0.025
 _BATTLE_ANCHOR_COMPONENTS = ('playersPanel', 'battleMessenger', 'damagePanel')
 _PLATE_TEXTURE_ROOT = 'gui/maps/icons/tankmate_signal/'
-_PLATE_WIDTH = 222.0
-_PLATE_HEIGHT = 52.0
-_TEXT_INSET = 54.0
-_TEXT_RIGHT_PADDING = 13.0
+_PLATE_WIDTH = 256.0
+_PLATE_HEIGHT = 84.0
+_TEXT_INSET = 76.0
+_TEXT_RIGHT_PADDING = 20.0
 _STATUS_WIDTH = 160.0
 _STATUS_HEIGHT = 22.0
 _STACK_LIMIT = 3
@@ -46,12 +56,36 @@ _ENTER_DURATION = 0.38
 _EXIT_DURATION = 0.32
 _MAX_ENTRY_STEP = 0.05
 _NOTIFICATION_CHIME = 'gui_pbs_reward_item'
+_WHISPER_WIDTH = 156.0
+_ACTION_SLANT = 24.0
+_CONFIG_PATH = 'mods/configs/tankmate_signal.json'
+_DEFAULT_WHISPER_HOTKEY = 'CTRL+T'
+_MODIFIER_KEYS = {
+    'CTRL': (Keys.KEY_LCONTROL, Keys.KEY_RCONTROL),
+    'ALT': (Keys.KEY_LALT, Keys.KEY_RALT),
+    'SHIFT': (Keys.KEY_LSHIFT, Keys.KEY_RSHIFT),
+}
+_TEST_FRIEND_NAME = 'Sauzer_'
+_TEST_HOTKEYS = {Keys.KEY_F9: True, Keys.KEY_F10: False}
 _battle_page_ref = None
 _original_register_component = None
 _callback = None
 _visible_popups = []
 _scene = None
 _test_notification_pending = _SHOW_TEST_NOTIFICATION
+_original_handle_key_event = None
+_pressed_whisper = None
+_test_hotkey_down = set()
+_test_friend_pending = deque()
+_test_friend_lookup = None
+_whisper_catalog = None
+_whisper_hotkey = None
+_whisper_hotkey_label = 'Ctrl+T'
+_whisper_hotkey_down = False
+_SETTINGS_ID = 'tankmate.signal'
+_MENU_MODIFIERS = {'ALT': -1, 'CTRL': -2, 'SHIFT': -3}
+_settings_api = None
+_settings_open = False
 
 
 class FriendPresence(object):
@@ -112,25 +146,252 @@ class FriendPresence(object):
 
 
 _presence = FriendPresence()
+_xmpp = proto_getter(PROTO_TYPE.XMPP)
 
 
-def _status_texture(online):
+class TestFriendLookup(ISearchHandler):
+    def __init__(self):
+        self.processor = SearchUsersProcessor()
+        self.processor.addHandler(self)
+
+    def onSearchComplete(self, users):
+        for user in users:
+            if user.getName().lower() == _TEST_FRIEND_NAME.lower():
+                for popup in _visible_popups:
+                    if popup.whisper_action is not None and popup.whisper_action.friend_key == (None, None):
+                        popup.whisper_action.friend_key = user.getStorageKey()
+                        popup.whisper_action.state = 'ready'
+                _log('test whisper recipient resolved')
+                return
+        _log('test whisper recipient not found: ' + _TEST_FRIEND_NAME)
+        self._mark_unavailable()
+
+    def onSearchFailed(self, reason):
+        _log('test whisper recipient lookup failed: %s' % reason)
+        self._mark_unavailable()
+
+    @staticmethod
+    def _mark_unavailable():
+        for popup in _visible_popups:
+            if popup.whisper_action is not None and popup.whisper_action.friend_key == (None, None):
+                popup.whisper_action.state = 'unavailable'
+
+
+class WhisperButton(object):
+    def __init__(self, friend_key):
+        self.friend_key = friend_key
+        self.used = False
+        self.state = 'pending' if friend_key == (None, None) else 'ready'
+
+    def handleMouseClickEvent(self, component, _position=None):
+        if not self.used and self.state not in ('pending', 'unavailable'):
+            _log('whisper button clicked')
+            try:
+                self.used = self._send_whisper()
+                self.state = 'sent' if self.used else 'retry'
+            except Exception:
+                self.state = 'retry'
+                _log('whisper attempt failed')
+                traceback.print_exc()
+            component.textureName = _whisper_texture(self.state)
+        return True
+
+    def _send_whisper(self):
+        if (not BigWorld.isWindowVisible() or _visible_scene() not in ('hangar', 'battle')
+                or BattleReplay.isPlaying()):
+            return False
+        db_id, scope = self.friend_key
+        if db_id is None:
+            _log('whisper skipped: recipient lookup has not completed')
+            return False
+        user = _presence.users_storage.getUser(db_id, PROTO_TYPE.XMPP, scope)
+        if user is None:
+            _log('whisper skipped: friend unavailable')
+            return False
+        xmpp = _xmpp.get()
+        if not xmpp.isConnected() or xmpp.messages.isInCooldown():
+            _log('whisper skipped: chat disconnected or cooling down')
+            return False
+        if dependency.instance(IGameSessionController).isPrivateMessagesForbidden:
+            _log('whisper skipped: private messages restricted')
+            return False
+        # The XMPP sender requires an existing private chat session.
+        opened = xmpp.messages.startChatSession(db_id, user.getName())
+        if not opened or (isinstance(opened, tuple) and not opened[0]):
+            _log('whisper skipped: could not open a private chat session')
+            return False
+        message_key = 'message' if _visible_scene() == 'battle' else 'message_hangar'
+        xmpp.messages.sendChatMessage(makeContactJID(db_id), _whisper_strings()[message_key])
+        _log('whisper handed to private chat')
+        return True
+
+
+def _language_candidates():
     locale = (getClientLanguage() or 'en').lower().replace('_', '-')
     if locale in ('zh', 'zh-hans', 'zh-sg', 'zh-cn-sg'):
         locale = 'zh-cn'
     elif locale in ('zh-hant', 'zh-hk', 'zh-mo'):
         locale = 'zh-tw'
-    suffix = 'online.png' if online else 'offline.png'
     if locale.replace('-', '').isalnum():
-        for candidate in (locale, locale.split('-', 1)[0]):
-            texture = _PLATE_TEXTURE_ROOT + 'status-' + candidate + '-' + suffix
-            if ResMgr.isFile(texture):
-                return texture
+        return (locale, locale.split('-', 1)[0], 'en')
+    return ('en',)
+
+
+def _status_texture(online):
+    suffix = 'online.png' if online else 'offline.png'
+    for candidate in _language_candidates():
+        texture = _PLATE_TEXTURE_ROOT + 'status-' + candidate + '-' + suffix
+        if ResMgr.isFile(texture):
+            return texture
     return _PLATE_TEXTURE_ROOT + 'status-en-' + suffix
 
 
+def _whisper_strings():
+    global _whisper_catalog
+    if _whisper_catalog is None:
+        section = ResMgr.openSection(_PLATE_TEXTURE_ROOT + 'whisper-labels.json')
+        _whisper_catalog = json.loads(section.asBinary)
+    for candidate in _language_candidates():
+        if candidate in _whisper_catalog:
+            return _whisper_catalog[candidate]
+    return _whisper_catalog['en']
+
+
+def _whisper_texture(state, hovered=False):
+    suffix = state + '-hover' if state in ('ready', 'retry') and hovered else state
+    for candidate in _language_candidates():
+        texture = _PLATE_TEXTURE_ROOT + 'whisper-' + candidate + '-' + suffix + '.png'
+        if ResMgr.isFile(texture):
+            return texture
+    return _PLATE_TEXTURE_ROOT + 'whisper-en-' + suffix + '.png'
+
+
+def _load_whisper_hotkey():
+    shortcut = _DEFAULT_WHISPER_HOTKEY
+    try:
+        with open(_CONFIG_PATH, 'rb') as settings_file:
+            shortcut = json.load(settings_file).get('whisper_hotkey', shortcut)
+    except IOError:
+        pass
+    except (ValueError, AttributeError):
+        _log('invalid settings file; using Ctrl+T')
+    if not _set_whisper_hotkey(shortcut):
+        _log('invalid whisper hotkey; using Ctrl+T')
+        _set_whisper_hotkey(_DEFAULT_WHISPER_HOTKEY)
+
+
+def _set_whisper_hotkey(shortcut):
+    global _whisper_hotkey, _whisper_hotkey_label, _whisper_hotkey_down
+    if shortcut == '':
+        _whisper_hotkey = None
+        _whisper_hotkey_label = ''
+        _whisper_hotkey_down = False
+        return True
+    try:
+        parts = shortcut.upper().replace(' ', '').split('+')
+        modifiers, key_name = parts[:-1], parts[-1]
+        if (not key_name or any(item not in _MODIFIER_KEYS for item in modifiers)
+                or len(set(modifiers)) != len(modifiers)
+                or not key_name.replace('_', '').isalnum()
+                or (key_name in ('F9', 'F10') and set(modifiers) == {'CTRL'})):
+            raise ValueError('invalid or reserved shortcut')
+        key = getattr(Keys, 'KEY_' + key_name)
+        excluded = set(value for pair in _MODIFIER_KEYS.values() for value in pair)
+        excluded.update(getattr(Keys, name, None) for name in (
+            'KEY_NONE', 'KEY_LEFTMOUSE', 'KEY_RIGHTMOUSE', 'KEY_MIDDLEMOUSE', 'KEY_RETURN', 'KEY_ESCAPE'))
+        if key in excluded:
+            return False
+    except (ValueError, AttributeError, TypeError):
+        return False
+    _whisper_hotkey = (key, set(modifiers))
+    _whisper_hotkey_label = '+'.join([item.title() for item in modifiers] + [key_name])
+    _whisper_hotkey_down = False
+    return True
+
+
+def _menu_keyset():
+    if _whisper_hotkey is None:
+        return []
+    key, modifiers = _whisper_hotkey
+    return [key] + [_MENU_MODIFIERS[name] for name in sorted(modifiers)]
+
+
+def _apply_menu_hotkey(keys):
+    if not keys:
+        return _set_whisper_hotkey('')
+    modifiers, primary = set(), set()
+    for group in keys:
+        for key in (group if isinstance(group, (list, tuple)) else [group]):
+            modifier = next((name for name, code in _MENU_MODIFIERS.items()
+                             if key == code or key in _MODIFIER_KEYS[name]), None)
+            if modifier is None:
+                primary.add(key)
+            else:
+                modifiers.add(modifier)
+    if len(primary) != 1:
+        return False
+    code = primary.pop()
+    names = [name[4:] for name in dir(Keys) if name.startswith('KEY_') and getattr(Keys, name) == code]
+    if not names:
+        return False
+    return _set_whisper_hotkey('+'.join(sorted(modifiers) + [min(names, key=len)]))
+
+
+def _on_settings_changed(linkage, settings):
+    if linkage != _SETTINGS_ID:
+        return
+    if not _apply_menu_hotkey(settings.get('whisper_hotkey', [])):
+        _log('settings hotkey rejected; keeping the previous binding')
+        SystemMessages.pushMessage(_whisper_strings()['settings_hint'], type=SystemMessages.SM_TYPE.Warning)
+        if _settings_api is not None:
+            _settings_api.updateModSettings(_SETTINGS_ID, {'whisper_hotkey': _menu_keyset()})
+
+
+def _on_settings_opened():
+    global _settings_open, _pressed_whisper, _whisper_hotkey_down
+    _settings_open = True
+    _pressed_whisper = None
+    _whisper_hotkey_down = False
+    _hide_popups()
+
+
+def _on_settings_closed():
+    global _settings_open
+    _settings_open = False
+
+
+def _register_settings():
+    global _settings_api
+    if _settings_api is not None:
+        return
+    try:
+        try:
+            from gui.aslainMenu import g_modsSettingsApi, templates
+        except ImportError:
+            from gui.modsSettingsApi import g_modsSettingsApi, templates
+    except ImportError:
+        return
+    try:
+        strings = _whisper_strings()
+        template = {'modDisplayName': 'Tankmate Signal', 'column1': [
+            templates.createHotkey(strings['settings_hotkey'], 'whisper_hotkey', _menu_keyset(),
+                                   tooltip=strings['settings_hint'])
+        ], 'column2': []}
+        _settings_api = g_modsSettingsApi
+        saved = _settings_api.setModTemplate(_SETTINGS_ID, template, _on_settings_changed)
+        _settings_api.setModDefaults(_SETTINGS_ID, {'whisper_hotkey': [Keys.KEY_T, _MENU_MODIFIERS['CTRL']]})
+        _settings_api.onWindowOpened += _on_settings_opened
+        _settings_api.onWindowClosed += _on_settings_closed
+        _on_settings_changed(_SETTINGS_ID, saved)
+        _log('Garage hotkey settings registered')
+    except Exception:
+        _settings_api = None
+        _log('Garage settings registration failed')
+        traceback.print_exc()
+
+
 class NotificationPlate(object):
-    def __init__(self, name, online, shown_at):
+    def __init__(self, name, online, shown_at, whisper_to=None, clan_tag=''):
         screen_width, screen_height = GUI.screenResolution()
         self.scale = max(0.75, min(screen_height / 1080.0, 1.75))
         self.frame_time = shown_at
@@ -144,22 +405,71 @@ class NotificationPlate(object):
         self.name.font = 'default_medium.font'
         self.name.colour = (238, 237, 233, 255)
         name_width, self.name_height = self.name.stringDimensions(name)
+        self.clan = None
+        if clan_tag:
+            self.clan = GUI.Text('[' + clan_tag + ']')
+            self._set_pixel_layout(self.clan)
+            self.clan.font = self.name.font
+            self.clan.colour = (178, 170, 152, 255)
+            self.clan_offset = name_width + round(8.0 * self.scale)
+            clan_width, self.clan_height = self.clan.stringDimensions('[' + clan_tag + ']')
+            name_width = self.clan_offset + clan_width
+        self.profile = GUI.Simple(_PLATE_TEXTURE_ROOT + ('profile-online.png' if online else 'profile-offline.png'))
+        self._set_pixel_layout(self.profile)
+        self.profile.materialFX = GUI.Simple.eMaterialFX.BLEND
+        self.profile.size = (round(48.0 * self.scale), round(48.0 * self.scale))
+        self.rule = GUI.Simple(_PLATE_TEXTURE_ROOT + 'status-rule.png')
+        self._set_pixel_layout(self.rule)
+        self.rule.materialFX = GUI.Simple.eMaterialFX.BLEND
+        self.rule.size = (round(136.0 * self.scale), round(2.0 * self.scale))
+        self.rule.colour = (156, 194, 128, 255) if online else (225, 109, 93, 255)
         self.status = GUI.Simple(_status_texture(online))
         self._set_pixel_layout(self.status)
         self.status.materialFX = GUI.Simple.eMaterialFX.BLEND
         status_width = round(_STATUS_WIDTH * self.scale)
         status_height = round(_STATUS_HEIGHT * self.scale)
         self.status.size = (status_width, status_height)
-        self.line_gap = round(1.0 * self.scale)
+        self.line_gap = round(14.0 * self.scale)
         self.text_height = self.name_height + self.line_gap + status_height
-        self.height = max(_PLATE_HEIGHT * self.scale, self.text_height + 10.0 * self.scale)
+        self.whisper = None
+        self.whisper_hint = None
+        self.keycap = None
+        self.whisper_action = None
+        self.whisper_bounds = None
+        self.whisper_width = self.whisper_height = 0
+        if whisper_to is not None:
+            self.whisper_action = WhisperButton(whisper_to)
+            self.whisper = GUI.Simple(_whisper_texture(self.whisper_action.state))
+            self._set_pixel_layout(self.whisper)
+            self.whisper.materialFX = GUI.Simple.eMaterialFX.BLEND
+            self.whisper_width = round(_WHISPER_WIDTH * self.scale)
+            self.whisper_hint = GUI.Text(_whisper_hotkey_label)
+            self._set_pixel_layout(self.whisper_hint)
+            self.whisper_hint.font = 'default_small.font'
+            self.whisper_hint.colour = (241, 234, 219, 255)
+            self.hint_width, self.hint_height = self.whisper_hint.stringDimensions(_whisper_hotkey_label)
+            self.keycap = GUI.Simple(_PLATE_TEXTURE_ROOT + 'shortcut-keycap.png')
+            self._set_pixel_layout(self.keycap)
+            self.keycap.materialFX = GUI.Simple.eMaterialFX.BLEND
+            self.keycap_width = max(round(78.0 * self.scale), self.hint_width + round(16.0 * self.scale))
+            self.keycap_height = self.hint_height + round(8.0 * self.scale)
+            self.keycap.size = (self.keycap_width, self.keycap_height)
+            self.keycap.visible = self.whisper_hint.visible = bool(_whisper_hotkey_label)
+            self.whisper_width = max(self.whisper_width, self.keycap_width + round(36.0 * self.scale))
+        self.height = max(_PLATE_HEIGHT * self.scale, self.text_height + 20.0 * self.scale)
+        if self.whisper is not None:
+            self.height = max(self.height, self.keycap_height + 48.0 * self.scale)
+            self.whisper_height = self.height
+            self.whisper.size = (self.whisper_width, self.whisper_height)
         text_padding = (_TEXT_INSET + _TEXT_RIGHT_PADDING) * self.scale
-        self.width = max(_PLATE_WIDTH * self.scale, max(name_width, status_width) + text_padding)
+        content_width = max(name_width, status_width)
+        self.width = max(_PLATE_WIDTH * self.scale, content_width + text_padding)
+        if self.whisper is not None:
+            self.width = content_width + text_padding + self.whisper_width
         if self.width >= screen_width / 2.0 or self.height >= screen_height / 8.0:
             raise ValueError('Notification plate exceeds the viewport limits')
 
-        backdrop_image = 'tankmate-plate.dds' if online else 'tankmate-plate-offline.dds'
-        self.backdrop = GUI.Simple(_PLATE_TEXTURE_ROOT + backdrop_image)
+        self.backdrop = GUI.Simple(_PLATE_TEXTURE_ROOT + 'plate.png')
         self._set_pixel_layout(self.backdrop)
         self.backdrop.materialFX = GUI.Simple.eMaterialFX.BLEND
         self.backdrop.size = (self.width, self.height)
@@ -168,6 +478,14 @@ class NotificationPlate(object):
             raise ValueError('The game did not apply the notification plate dimensions')
         self.backdrop.addChild(self.name, 'friendName')
         self.backdrop.addChild(self.status, 'friendStatus')
+        self.backdrop.addChild(self.profile, 'profile')
+        self.backdrop.addChild(self.rule, 'statusRule')
+        if self.clan is not None:
+            self.backdrop.addChild(self.clan, 'clanTag')
+        if self.whisper is not None:
+            self.backdrop.addChild(self.whisper, 'whisper')
+            self.backdrop.addChild(self.keycap, 'shortcutKeycap')
+            self.backdrop.addChild(self.whisper_hint, 'whisperHotkey')
 
     @staticmethod
     def _set_pixel_layout(component):
@@ -187,7 +505,23 @@ class NotificationPlate(object):
         text_x = x + round(_TEXT_INSET * self.scale)
         text_y = y + round((self.height - self.text_height) / 2.0)
         self.name.position = (text_x, text_y, 0.1)
+        if self.clan is not None:
+            self.clan.position = (text_x + self.clan_offset,
+                                  text_y + round((self.name_height - self.clan_height) / 2.0), 0.1)
         self.status.position = (text_x, text_y + self.name_height + self.line_gap, 0.1)
+        self.rule.position = (text_x, text_y + self.name_height + round(7.0 * self.scale), 0.1)
+        self.profile.position = (x + round(14.0 * self.scale), y + round((self.height - self.profile.size[1]) / 2.0), 0.1)
+        if self.whisper is not None:
+            button_x = x + self.width - self.whisper_width
+            button_y = y
+            self.whisper.position = (button_x, button_y, 0.1)
+            center_x = button_x + (self.whisper_width + _ACTION_SLANT * self.scale) / 2.0
+            keycap_y = y + round(self.height * 0.58)
+            self.keycap.position = (round(center_x - self.keycap_width / 2.0), keycap_y, 0.05)
+            self.whisper_hint.position = (round(center_x - self.hint_width / 2.0),
+                                          keycap_y + round((self.keycap_height - self.hint_height) / 2.0), 0.0)
+            self.whisper_bounds = (button_x, button_y,
+                                   button_x + self.whisper_width, button_y + self.whisper_height)
 
     def show(self):
         GUI.addRoot(self.backdrop)
@@ -195,6 +529,13 @@ class NotificationPlate(object):
     def update_position(self, position, now, stack_offset):
         frame_delta = max(0.0, now - self.frame_time)
         self.frame_time = now
+        if self.whisper is not None:
+            hovered = _whisper_under_cursor() is self
+            self.whisper.textureName = _whisper_texture(self.whisper_action.state, hovered)
+            self.whisper_hint.visible = bool(_whisper_hotkey_label) and self.whisper_action.state in ('ready', 'retry')
+            self.keycap.visible = self.whisper_hint.visible
+            if hovered and not self.whisper_action.used:
+                self.expires_at += frame_delta
         self.entry_elapsed = min(_ENTER_DURATION,
                                  self.entry_elapsed + min(frame_delta, _MAX_ENTRY_STEP))
         enter = self.entry_elapsed / _ENTER_DURATION
@@ -233,7 +574,88 @@ def _log(message):
     print('%s %s' % (_PREFIX, message))
 
 
+def _whisper_under_cursor():
+    if not _visible_popups or not BigWorld.isWindowVisible() or _visible_scene() not in ('hangar', 'battle'):
+        return None
+    cursor = GUI.mcursor()
+    if not cursor.active or not cursor.visible:
+        return None
+    width, height = GUI.screenResolution()
+    cursor_x, cursor_y = cursor.position
+    x = (cursor_x + 1.0) * width / 2.0
+    y = (1.0 - cursor_y) * height / 2.0
+    now = BigWorld.time()
+    for popup in reversed(_visible_popups):
+        if popup.whisper_bounds is None or popup.paused_at is not None or now >= popup.expires_at:
+            continue
+        left, top, right, bottom = popup.whisper_bounds
+        slant = _ACTION_SLANT / _WHISPER_WIDTH * (right - left) * (bottom - y) / (bottom - top)
+        if left + slant <= x <= right and top <= y <= bottom:
+            return popup
+    return None
+
+
+def _handle_key_event(event):
+    global _pressed_whisper, _test_hotkey_down, _test_friend_pending, _whisper_hotkey_down
+    if _settings_open:
+        return _original_handle_key_event(event)
+    if _whisper_hotkey is not None and event.key == _whisper_hotkey[0]:
+        if not event.isKeyDown():
+            was_down = _whisper_hotkey_down
+            _whisper_hotkey_down = False
+            if was_down:
+                return True
+        elif _whisper_hotkey_down:
+            return True
+        else:
+            modifiers = set(name for name, keys in _MODIFIER_KEYS.items()
+                            if any(BigWorld.isKeyDown(key) for key in keys))
+            if (modifiers == _whisper_hotkey[1] and BigWorld.isWindowVisible()
+                    and _visible_scene() in ('hangar', 'battle') and not BattleReplay.isPlaying()):
+                now = BigWorld.time()
+                for popup in reversed(_visible_popups):
+                    if popup.whisper_action is not None and popup.paused_at is None and now < popup.expires_at:
+                        _whisper_hotkey_down = True
+                        popup.whisper_action.handleMouseClickEvent(popup.whisper)
+                        popup.expires_at = max(popup.expires_at, now + 2.0)
+                        return True
+    if event.key in _TEST_HOTKEYS:
+        if not event.isKeyDown():
+            was_down = event.key in _test_hotkey_down
+            _test_hotkey_down.discard(event.key)
+            if was_down:
+                return True
+        elif event.key in _test_hotkey_down:
+            return True
+        elif ((BigWorld.isKeyDown(Keys.KEY_LCONTROL) or BigWorld.isKeyDown(Keys.KEY_RCONTROL))
+              and not any(BigWorld.isKeyDown(key) for name in ('ALT', 'SHIFT') for key in _MODIFIER_KEYS[name])):
+            _test_hotkey_down.add(event.key)
+            _test_friend_pending.append(_TEST_HOTKEYS[event.key])
+            _log('test popup requested for ' + _TEST_FRIEND_NAME)
+            return True
+    if event.key == Keys.KEY_LEFTMOUSE:
+        try:
+            if event.isKeyDown():
+                _pressed_whisper = _whisper_under_cursor()
+                if _pressed_whisper is not None:
+                    return True
+            elif _pressed_whisper is not None:
+                pressed = _pressed_whisper
+                _pressed_whisper = None
+                if _whisper_under_cursor() is pressed:
+                    pressed.whisper_action.handleMouseClickEvent(pressed.whisper)
+                    pressed.expires_at = max(pressed.expires_at, BigWorld.time() + 2.0)
+                return True
+        except Exception:
+            _pressed_whisper = None
+            _log('whisper input handler failed')
+            traceback.print_exc()
+    return _original_handle_key_event(event)
+
+
 def _visible_scene():
+    if _settings_open:
+        return 'other'
     app_loader = ServicesLocator.appLoader
     space_id = app_loader.getSpaceID()
     if space_id == GuiGlobalSpaceID.LOBBY:
@@ -268,6 +690,7 @@ def _on_membership_changed(action, user, *unused):
 
 
 def _subscribe_to_user_events(*unused):
+    _register_settings()
     events = g_messengerEvents.users
     events.onUsersListReceived += _on_roster_loaded
     events.onUserStatusUpdated += _on_status_updated
@@ -280,6 +703,10 @@ def _on_plugin_connected(proto_type, *unused):
 
 
 def _on_disconnected(*unused):
+    global _test_hotkey_down, _test_friend_pending, _whisper_hotkey_down
+    _test_hotkey_down.clear()
+    _test_friend_pending.clear()
+    _whisper_hotkey_down = False
     _presence.reset()
     _hide_popups()
 
@@ -366,8 +793,15 @@ def _battle_popup_anchor():
     return _BATTLE_FALLBACK_POSITION, 'screen'
 
 
-def _show_notification(name, online, scene, now, position, anchor):
-    popup = NotificationPlate(name, online, now)
+def _show_notification(name, online, scene, now, position, anchor, friend_key=None):
+    whisper_to = friend_key if online and not BattleReplay.isPlaying() else None
+    clan_tag = ''
+    if friend_key is not None and friend_key[0] is not None:
+        user = _presence.users_storage.getUser(friend_key[0], PROTO_TYPE.XMPP, friend_key[1])
+        if user is not None:
+            info = user.getClanInfo()
+            clan_tag = getattr(info, 'abbrev', '') or ''
+    popup = NotificationPlate(name, online, now, whisper_to, clan_tag)
     popup.move(position, 0.0)
     popup.show()
     _visible_popups.append(popup)
@@ -391,7 +825,7 @@ def _layout_notifications(scene, position, now):
         return
 
     screen_height = GUI.screenResolution()[1]
-    first = _visible_popups[0]
+    first = _visible_popups[-1]
     gap = round(6.0 * first.scale)
     height = sum(popup.height for popup in _visible_popups) + gap * (len(_visible_popups) - 1)
     top = (1.0 - position[1]) * screen_height / 2.0
@@ -400,13 +834,13 @@ def _layout_notifications(scene, position, now):
     top = max(0.0, min(top, screen_height - height))
     stack_position = (position[0], 1.0 - 2.0 * top / screen_height, position[2])
     offset = 0.0
-    for popup in _visible_popups:
+    for popup in reversed(_visible_popups):
         popup.update_position(stack_position, now, offset)
         offset += popup.height + gap
 
 
 def _tick():
-    global _callback, _scene, _test_notification_pending
+    global _callback, _scene, _test_notification_pending, _test_friend_pending, _test_friend_lookup
     try:
         scene = _visible_scene()
         now = BigWorld.time()
@@ -426,15 +860,30 @@ def _tick():
                 popup.hide()
                 _visible_popups.remove(popup)
         if scene in ('hangar', 'battle') and (
-                _visible_popups or _presence.pending or _test_notification_pending):
+                _visible_popups or _presence.pending or _test_notification_pending or _test_friend_pending):
             position, anchor = (_battle_popup_anchor() if scene == 'battle'
                                 else (_HANGAR_POSITION, 'hangar'))
             if position is None:
                 _hide_popups()
             else:
+                while _test_friend_pending and len(_visible_popups) < _STACK_LIMIT:
+                    test_online = _test_friend_pending[0]
+                    friend_key = None
+                    for user in _presence.users_storage.getList(FriendsFindCriteria()):
+                        if user.getName().lower() == _TEST_FRIEND_NAME.lower():
+                            friend_key = user.getStorageKey()
+                            break
+                    _show_notification(_TEST_FRIEND_NAME, test_online, scene, now, position, anchor,
+                                       friend_key if friend_key is not None else (None, None))
+                    _test_friend_pending.popleft()
+                    if friend_key is None and test_online:
+                        if _test_friend_lookup is None:
+                            _test_friend_lookup = TestFriendLookup()
+                        _test_friend_lookup.processor.find(_TEST_FRIEND_NAME)
+                        _log('looking up test whisper recipient by name')
                 while len(_visible_popups) < _STACK_LIMIT and _presence.pending:
-                    _, (name, online) = _presence.pending.popitem(last=False)
-                    _show_notification(name, online, scene, now, position, anchor)
+                    (friend_key, _), (name, online) = _presence.pending.popitem(last=False)
+                    _show_notification(name, online, scene, now, position, anchor, friend_key)
                 if _test_notification_pending and len(_visible_popups) < _STACK_LIMIT:
                     _test_notification_pending = False
                     _show_notification('Test notification', True, scene, now, position, anchor)
@@ -454,11 +903,16 @@ def _tick():
                     delay = min(delay, 1.0 / 60.0)
                 else:
                     delay = max(0.01, min(delay, remaining - _EXIT_DURATION))
+                if popup.whisper_action is not None:
+                    delay = min(delay, 0.05)
         _callback = BigWorld.callback(delay, _tick)
 
 
 def init():
-    global _callback, _original_register_component
+    global _callback, _original_register_component, _original_handle_key_event
+    _load_whisper_hotkey()
+    _original_handle_key_event = game.handleKeyEvent
+    game.handleKeyEvent = _handle_key_event
     _original_register_component = SharedPage._onRegisterFlashComponent
     SharedPage._onRegisterFlashComponent = _register_battle_component
     _subscribe_to_user_events()
@@ -472,7 +926,20 @@ def init():
 
 
 def fini():
-    global _battle_page_ref, _callback, _scene
+    global _battle_page_ref, _callback, _scene, _pressed_whisper, _test_friend_lookup, _settings_api, _settings_open
+    if _settings_api is not None:
+        _settings_api.onWindowOpened -= _on_settings_opened
+        _settings_api.onWindowClosed -= _on_settings_closed
+        _settings_api.onSettingsChanged -= _on_settings_changed
+        _settings_api = None
+    _settings_open = False
+    if _test_friend_lookup is not None:
+        _test_friend_lookup.processor.removeHandler(_test_friend_lookup)
+        _test_friend_lookup.processor.fini()
+        _test_friend_lookup = None
+    if game.handleKeyEvent is _handle_key_event:
+        game.handleKeyEvent = _original_handle_key_event
+    _pressed_whisper = None
     if SharedPage._onRegisterFlashComponent is _register_battle_component:
         SharedPage._onRegisterFlashComponent = _original_register_component
     _battle_page_ref = None

@@ -46,6 +46,130 @@ function Write-StatusTexture([string] $Text, [Drawing.Color] $Color, [string] $P
     }
 }
 
+function Write-WhisperTexture([string] $Text, [string] $State, [string] $Path) {
+    $bitmap = [Drawing.Bitmap]::new(312, 168)
+    $graphics = [Drawing.Graphics]::FromImage($bitmap)
+    $outline = [Drawing.Drawing2D.GraphicsPath]::new()
+    $format = [Drawing.StringFormat]::new()
+    $font = [Drawing.Font]::new('Segoe UI', 18, [Drawing.GraphicsUnit]::Pixel)
+    $background = '#806032'
+    $foreground = '#F1EADB'
+    $border = '#C1AA79'
+    if ($State.EndsWith('-hover')) { $background = '#99763D'; $border = '#E0C58D' }
+    if ($State -eq 'sent') { $background = '#26372C'; $foreground = '#B4D6AE'; $border = '#54754E' }
+    if ($State -in @('pending', 'unavailable')) {
+        $background = '#282829'; $foreground = '#AAA9A6'; $border = '#545250'
+    }
+    $fillBrush = [Drawing.SolidBrush]::new([Drawing.ColorTranslator]::FromHtml($background))
+    $textBrush = [Drawing.SolidBrush]::new([Drawing.ColorTranslator]::FromHtml($foreground))
+    $borderPen = [Drawing.Pen]::new([Drawing.ColorTranslator]::FromHtml($border), 1)
+    try {
+        $graphics.ScaleTransform(2, 2)
+        $graphics.SmoothingMode = [Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $graphics.TextRenderingHint = [Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+        $points = [Drawing.PointF[]]@(
+            [Drawing.PointF]::new(24.5, 0.5), [Drawing.PointF]::new(145.5, 0.5),
+            [Drawing.PointF]::new(155.5, 10.5), [Drawing.PointF]::new(155.5, 73.5),
+            [Drawing.PointF]::new(145.5, 83.5), [Drawing.PointF]::new(0.5, 83.5)
+        )
+        $outline.AddPolygon($points)
+        $outline.CloseFigure()
+        $graphics.FillPath($fillBrush, $outline)
+        $graphics.DrawPath($borderPen, $outline)
+        while ($graphics.MeasureString($Text, $font).Width -gt 122 -and $font.Size -gt 10) {
+            $nextSize = $font.Size - 0.5
+            $font.Dispose()
+            $font = [Drawing.Font]::new('Segoe UI', $nextSize, [Drawing.GraphicsUnit]::Pixel)
+        }
+        if ($graphics.MeasureString($Text, $font).Width -gt 122) { throw "Button label is too wide: '$Text'." }
+        $format.Alignment = [Drawing.StringAlignment]::Center
+        $format.LineAlignment = [Drawing.StringAlignment]::Center
+        $graphics.DrawString($Text, $font, $textBrush, [Drawing.RectangleF]::new(27, 8, 124, 30), $format)
+        $bitmap.Save($Path, [Drawing.Imaging.ImageFormat]::Png)
+    } finally {
+        $font.Dispose()
+        $format.Dispose()
+        $outline.Dispose()
+        $fillBrush.Dispose()
+        $textBrush.Dispose()
+        $borderPen.Dispose()
+        $graphics.Dispose()
+        $bitmap.Dispose()
+    }
+}
+
+function Write-NotificationTexture([string] $Path) {
+    $bitmap = [Drawing.Bitmap]::new(824, 168)
+    $graphics = [Drawing.Graphics]::FromImage($bitmap)
+    $outline = [Drawing.Drawing2D.GraphicsPath]::new()
+    $background = [Drawing.SolidBrush]::new([Drawing.Color]::FromArgb(246, 34, 36, 37))
+    $border = [Drawing.Pen]::new([Drawing.Color]::FromArgb(255, 119, 120, 111), 1)
+    try {
+        $graphics.ScaleTransform(2, 2)
+        $graphics.SmoothingMode = [Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $points = [Drawing.PointF[]]@(
+            [Drawing.PointF]::new(0.5, 12.5), [Drawing.PointF]::new(12.5, 0.5),
+            [Drawing.PointF]::new(399.5, 0.5), [Drawing.PointF]::new(411.5, 12.5),
+            [Drawing.PointF]::new(411.5, 71.5), [Drawing.PointF]::new(399.5, 83.5),
+            [Drawing.PointF]::new(12.5, 83.5), [Drawing.PointF]::new(0.5, 71.5)
+        )
+        $outline.AddPolygon($points)
+        $outline.CloseFigure()
+        $graphics.FillPath($background, $outline)
+        $graphics.DrawPath($border, $outline)
+        $bitmap.Save($Path, [Drawing.Imaging.ImageFormat]::Png)
+    } finally {
+        $border.Dispose()
+        $background.Dispose()
+        $outline.Dispose()
+        $graphics.Dispose()
+        $bitmap.Dispose()
+    }
+}
+
+function Write-ProfileTexture([bool] $Online, [string] $Path) {
+    $bitmap = [Drawing.Bitmap]::new(128, 128)
+    $graphics = [Drawing.Graphics]::FromImage($bitmap)
+    $person = [Drawing.SolidBrush]::new([Drawing.Color]::FromArgb(223, 218, 204))
+    $dotColor = if ($Online) { [Drawing.Color]::FromArgb(156, 194, 128) } else { [Drawing.Color]::FromArgb(225, 109, 93) }
+    $dot = [Drawing.SolidBrush]::new($dotColor)
+    $dotBorder = [Drawing.Pen]::new([Drawing.Color]::FromArgb(34, 36, 37), 4)
+    try {
+        $graphics.ScaleTransform(2, 2)
+        $graphics.SmoothingMode = [Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $graphics.SetClip([Drawing.RectangleF]::new(0, 0, 64, 54))
+        $graphics.FillEllipse($person, 18, 3, 26, 26)
+        $graphics.FillEllipse($person, 7, 31, 48, 43)
+        $graphics.ResetClip()
+        $graphics.FillEllipse($dot, 45, 44, 16, 16)
+        $graphics.DrawEllipse($dotBorder, 45, 44, 16, 16)
+        $bitmap.Save($Path, [Drawing.Imaging.ImageFormat]::Png)
+    } finally {
+        $dotBorder.Dispose(); $dot.Dispose(); $person.Dispose()
+        $graphics.Dispose(); $bitmap.Dispose()
+    }
+}
+
+function Write-KeycapTexture([string] $Path) {
+    $bitmap = [Drawing.Bitmap]::new(156, 44)
+    $graphics = [Drawing.Graphics]::FromImage($bitmap)
+    $outline = [Drawing.Drawing2D.GraphicsPath]::new()
+    $border = [Drawing.Pen]::new([Drawing.Color]::FromArgb(225, 241, 234, 219), 1)
+    try {
+        $graphics.ScaleTransform(2, 2)
+        $graphics.SmoothingMode = [Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $outline.AddArc(0.5, 0.5, 6, 6, 180, 90)
+        $outline.AddArc(71.5, 0.5, 6, 6, 270, 90)
+        $outline.AddArc(71.5, 15.5, 6, 6, 0, 90)
+        $outline.AddArc(0.5, 15.5, 6, 6, 90, 90)
+        $outline.CloseFigure()
+        $graphics.DrawPath($border, $outline)
+        $bitmap.Save($Path, [Drawing.Imaging.ImageFormat]::Png)
+    } finally {
+        $border.Dispose(); $outline.Dispose(); $graphics.Dispose(); $bitmap.Dispose()
+    }
+}
+
 $pythonDll = Join-Path $GameRoot 'win64/python27.dll'
 if (-not (Test-Path -LiteralPath $pythonDll -PathType Leaf)) {
     throw "World of Tanks Python runtime not found at '$pythonDll'. Pass the game installation folder with -GameRoot."
@@ -253,6 +377,36 @@ try {
         Write-StatusTexture $pair[0] $onlineColor $statusImages[$onlinePath]
         Write-StatusTexture $pair[1] $offlineColor $statusImages[$offlinePath]
     }
+    $whisperLabelsPath = Join-Path $probeRoot 'whisper-labels.json'
+    $whisperLabels = Get-Content -LiteralPath $whisperLabelsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($language in $labels.PSObject.Properties) {
+        $locale = $language.Name
+        $translation = $whisperLabels.$locale
+        foreach ($key in @('ready', 'sent', 'retry', 'pending', 'unavailable', 'message', 'message_hangar')) {
+            if ([string]::IsNullOrWhiteSpace($translation.$key)) { throw "Missing whisper translation '$locale.$key'." }
+        }
+        foreach ($state in @('ready', 'ready-hover', 'sent', 'retry', 'retry-hover', 'pending', 'unavailable')) {
+            $asset = "$textureRoot/whisper-$locale-$state.png"
+            $statusImages[$asset] = [IO.Path]::GetTempFileName()
+            $labelKey = $state.Replace('-hover', '')
+            Write-WhisperTexture $translation.$labelKey $state $statusImages[$asset]
+        }
+    }
+    foreach ($state in @('online', 'offline')) {
+        $asset = "$textureRoot/profile-$state.png"
+        $statusImages[$asset] = [IO.Path]::GetTempFileName()
+        Write-ProfileTexture ($state -eq 'online') $statusImages[$asset]
+    }
+    $statusImages["$textureRoot/plate.png"] = [IO.Path]::GetTempFileName()
+    Write-NotificationTexture $statusImages["$textureRoot/plate.png"]
+    $statusImages["$textureRoot/shortcut-keycap.png"] = [IO.Path]::GetTempFileName()
+    Write-KeycapTexture $statusImages["$textureRoot/shortcut-keycap.png"]
+    $statusImages["$textureRoot/status-rule.png"] = [IO.Path]::GetTempFileName()
+    $ruleBitmap = [Drawing.Bitmap]::new(2, 2)
+    try {
+        foreach ($x in 0..1) { foreach ($y in 0..1) { $ruleBitmap.SetPixel($x, $y, [Drawing.Color]::White) } }
+        $ruleBitmap.Save($statusImages["$textureRoot/status-rule.png"], [Drawing.Imaging.ImageFormat]::Png)
+    } finally { $ruleBitmap.Dispose() }
 
     $sourceLiteral = ConvertTo-PythonPathLiteral $source
     $bytecodeLiteral = ConvertTo-PythonPathLiteral $bytecode
@@ -277,8 +431,7 @@ with open(u$bytecodeLiteral, 'wb') as bytecode:
 "@
     $assets = [ordered]@{
         "res/scripts/client/gui/mods/$moduleName.pyc" = $bytecode
-        "$textureRoot/tankmate-plate.dds" = Join-Path $probeRoot 'tankmate-plate.dds'
-        "$textureRoot/tankmate-plate-offline.dds" = Join-Path $probeRoot 'tankmate-plate-offline.dds'
+        "$textureRoot/whisper-labels.json" = $whisperLabelsPath
     }
     foreach ($name in $statusImages.Keys) { $assets[$name] = $statusImages[$name] }
     [WotProbePython]::WritePackage($buildStaging, $manifest, $assets.Keys, $assets.Values)
@@ -299,6 +452,13 @@ with open(u$bytecodeLiteral, 'wb') as bytecode:
         throw
     }
     Write-Output "Installed $destination"
+    $configDirectory = Join-Path $GameRoot 'mods/configs'
+    $configPath = Join-Path $configDirectory 'tankmate_signal.json'
+    if (-not (Test-Path -LiteralPath $configPath)) {
+        [IO.Directory]::CreateDirectory($configDirectory) | Out-Null
+        [IO.File]::WriteAllText($configPath, '{ "whisper_hotkey": "CTRL+T" }' + [Environment]::NewLine,
+            [Text.UTF8Encoding]::new($false))
+    }
 } finally {
     foreach ($temporaryFile in (@($bytecode, $buildStaging, $installStaging) + @($statusImages.Values))) {
         if ($temporaryFile -and (Test-Path -LiteralPath $temporaryFile)) {
