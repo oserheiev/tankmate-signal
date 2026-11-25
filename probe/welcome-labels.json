@@ -1,0 +1,30 @@
+{
+  "en": {
+    "intro": "Know when your friends are ready to play.",
+    "headings": [
+      "Stay informed",
+      "Send a message",
+      "Change your hotkey"
+    ],
+    "alerts": "Friend online and offline alerts in the Garage and in battle.",
+    "message": "Click Message or press {hotkey} on an online alert.",
+    "message_mouse": "Click the message button on an online alert.",
+    "battle": "In battle, hold Ctrl to click.",
+    "settings": "Settings → Mods →\nTankmate Signal",
+    "got_it": "Got it"
+  },
+  "uk": {
+    "intro": "Дізнавайтесь, коли друзі готові до гри.",
+    "headings": [
+      "Будьте в курсі",
+      "Напишіть другу",
+      "Змініть клавішу"
+    ],
+    "alerts": "Сповіщення про вхід і вихід друзів у Гаражі та в бою.",
+    "message": "Натисніть «Написати» або {hotkey} у сповіщенні.",
+    "message_mouse": "Натисніть «Написати» у сповіщенні.",
+    "battle": "У бою утримуйте Ctrl, щоб клацнути.",
+    "settings": "Налаштування → Mods →\nTankmate Signal",
+    "got_it": "Зрозуміло"
+  }
+}

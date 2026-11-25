@@ -433,6 +433,8 @@ with open(u$bytecodeLiteral, 'wb') as bytecode:
         "res/scripts/client/gui/mods/$moduleName.pyc" = $bytecode
         "$textureRoot/whisper-labels.json" = $whisperLabelsPath
         "res/gui/flash/tankmateSettings.swf" = (Join-Path $probeRoot 'tankmate-settings.swf')
+        "res/gui/flash/tankmateWelcome.swf" = (Join-Path $probeRoot 'tankmate-welcome.swf')
+        "$textureRoot/welcome-labels.json" = (Join-Path $probeRoot 'welcome-labels.json')
     }
     foreach ($name in $statusImages.Keys) { $assets[$name] = $statusImages[$name] }
     [WotProbePython]::WritePackage($buildStaging, $manifest, $assets.Keys, $assets.Values)
