@@ -6,7 +6,7 @@
     "message": "Click the message button or press {hotkey} on an online alert.",
     "message_mouse": "Click the message button on an online alert.",
     "battle": "In battle, hold Ctrl to click.",
-    "settings": "Settings → Mods → Tankmate Signal",
+    "settings": "Settings → Mods →\nTankmate Signal",
     "got_it": "Got it"
   },
   "uk": {
@@ -16,7 +16,7 @@
     "message": "Натисніть кнопку повідомлення або {hotkey} на сповіщенні про вхід друга.",
     "message_mouse": "Натисніть кнопку повідомлення на сповіщенні про вхід друга.",
     "battle": "У бою утримуйте Ctrl, щоб натиснути кнопку.",
-    "settings": "Налаштування → Mods → Tankmate Signal",
+    "settings": "Налаштування → Mods →\nTankmate Signal",
     "got_it": "Зрозуміло"
   }
 }

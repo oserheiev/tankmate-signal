@@ -9,25 +9,24 @@
 
       override protected function getBackgroundActualHeight() : Number
       {
-         return 300;
+         return 350;
       }
 
       override protected function applyLayout() : void
       {
          textField.visible = false;
          textField.width = 1040;
-         setSize(1040, 330);
          super.applyLayout();
       }
 
       private function welcomeText(value:String, xPos:Number, yPos:Number, wide:Number,
-                                   high:Number, size:Number = 14, title:Boolean = false) : TextField
+                                   high:Number, size:Number = 16, title:Boolean = false) : TextField
       {
          var field:TextField = new TextField();
          var format:TextFormat = new TextFormat(title ? "$TitleFont" : "$TextFont", size,
-                                               title ? 0xEEEDE9 : 0xB2AA98);
+                                               title ? 0xEEEDE9 : 0xD1CBBC);
          format.align = "left";
-         format.leading = 3;
+         format.leading = 4;
          field.defaultTextFormat = format;
          field.embedFonts = true;
          field.selectable = false;
@@ -87,45 +86,44 @@
          this.welcomeContent.mouseChildren = false;
          addChild(this.welcomeContent);
          this.welcomeContent.graphics.beginFill(0, 0);
-         this.welcomeContent.graphics.drawRect(0, 0, 1040, 300);
+         this.welcomeContent.graphics.drawRect(0, 0, 1040, 350);
          this.welcomeContent.graphics.endFill();
-         this.welcomeContent.graphics.lineStyle(1, 0xB2AA98, 0.35);
-         this.welcomeContent.graphics.moveTo(20, 132);
-         this.welcomeContent.graphics.lineTo(1020, 132);
-         this.welcomeContent.graphics.moveTo(346, 158);
-         this.welcomeContent.graphics.lineTo(346, 275);
-         this.welcomeContent.graphics.moveTo(684, 158);
-         this.welcomeContent.graphics.lineTo(684, 275);
-         this.welcomeText("Tankmate Signal", 22, 22, 490, 45, 28, true);
-         this.welcomeText(data.intro, 22, 70, 490, 45, 16);
+         this.welcomeContent.graphics.lineStyle(1, 0xB2AA98, 0.24);
+         this.welcomeContent.graphics.moveTo(32, 148);
+         this.welcomeContent.graphics.lineTo(1008, 148);
+         this.welcomeContent.graphics.moveTo(354, 176);
+         this.welcomeContent.graphics.lineTo(354, 340);
+         this.welcomeContent.graphics.moveTo(692, 176);
+         this.welcomeContent.graphics.lineTo(692, 340);
+         this.welcomeText("Tankmate Signal", 32, 30, 480, 48, 30, true);
+         this.welcomeText(data.intro, 32, 88, 460, 48, 18);
 
          // Use exactly the same textures and component arrangement as NotificationPlate.
          var base:String = "gui/maps/icons/tankmate_signal/";
-         this.welcomeImage(base + "plate.png", 550, 18, 468, 94);
-         this.welcomeImage(base + "profile-online.png", 564, 41, 48, 48);
-         var rule:Image = this.welcomeImage(base + "status-rule.png", 626, 61, 136, 2);
+         this.welcomeImage(base + "plate.png", 540, 32, 468, 94);
+         this.welcomeImage(base + "profile-online.png", 554, 55, 48, 48);
+         var rule:Image = this.welcomeImage(base + "status-rule.png", 616, 75, 136, 2);
          rule.transform.colorTransform = new ColorTransform(0, 0, 0, 1, 156, 194, 128);
-         this.welcomeText("IronFox_7", 626, 30, 105, 28, 16, true);
-         this.welcomeText("[WOLF]", 731, 33, 85, 28, 14);
-         this.welcomeImage(data.statusImage, 626, 72, 160, 22);
-         this.welcomeImage(data.buttonImage, 862, 18, 156, 94);
+         this.welcomeText("IronFox7", 616, 43, 108, 30, 18, true);
+         this.welcomeText("[WOLF]", 728, 47, 80, 26, 14);
+         this.welcomeImage(data.statusImage, 616, 86, 160, 22);
+         this.welcomeImage(data.buttonImage, 852, 32, 156, 94);
          if(data.shortcut.length > 0)
          {
-            this.welcomeImage(base + "shortcut-keycap.png", 913, 73, 78, 22);
-            var key:TextField = this.welcomeText(data.shortcut, 915, 75, 74, 20, 12);
+            this.welcomeImage(base + "shortcut-keycap.png", 882, 87, 100, 24);
+            var key:TextField = this.welcomeText(data.shortcut, 884, 88, 96, 24, 14);
             var centered:TextFormat = key.defaultTextFormat;
             centered.align = "center";
             key.setTextFormat(centered);
          }
-         var positions:Array = [22, 364, 702];
+         var positions:Array = [32, 370, 708];
          var bodies:Array = [data.alerts, data.message, data.settings];
          for(var i:int = 0; i < 3; i++)
          {
-            this.welcomeText(String(i + 1), positions[i], 158, 26, 30, 18, true);
-            this.welcomeText(data.headings[i], positions[i] + 32, 158, 282, 50, 18, true);
-            this.welcomeText(bodies[i], positions[i] + 8, 207, 304, 65, 14);
+            this.welcomeText(data.headings[i], positions[i], 176, 300, 50, 22, true);
+            this.welcomeText(bodies[i], positions[i], 234, 300, 76, 16);
          }
-         this.welcomeText(data.battle, 372, 268, 302, 32, 12);
+         this.welcomeText(data.battle, 370, 314, 300, 36, 14);
          invalidateLayout();
          updateStage(App.appWidth, App.appHeight);
       }
