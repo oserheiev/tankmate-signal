@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
-from tools.verify_package import ASSETS, MANIFEST, verify_package
+from tools.verify_package import ASSETS, MANIFEST, SETTINGS_UI, verify_package
 
 
 class PackageTests(unittest.TestCase):
@@ -18,7 +18,8 @@ class PackageTests(unittest.TestCase):
                              "<name>Tankmate Signal</name><version>1.2.3</version></root>")
             for name, signature in ASSETS.items():
                 if name != missing:
-                    archive.writestr(name, signature)
+                    content = (Path(__file__).resolve().parents[1] / "probe" / "tankmate-settings.swf").read_bytes() if name == SETTINGS_UI else signature
+                    archive.writestr(name, content)
 
     def test_accepts_expected_stored_package(self):
         self.write_package()

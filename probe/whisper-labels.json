@@ -8,7 +8,11 @@
     "message": "Chceš do čety? Právě jsem v bitvě.",
     "message_hangar": "Chceš do čety?",
     "settings_hotkey": "Klávesová zkratka zprávy",
-    "settings_hint": "Zvolte klávesu, případně s Ctrl, Alt nebo Shift. Ctrl+F9 / Ctrl+F10 je vyhrazeno pro testování."
+    "settings_disabled": "Vypnuto",
+    "settings_save_error": "Nastavení se nepodařilo uložit. Zkontrolujte oprávnění souboru.",
+    "settings_invalid": "Neplatná zkratka",
+    "settings_dev_mode": "Vývojářský režim",
+    "settings_dev_description": "Povolí testovací upozornění: Ctrl+F9 pro přihlášení, Ctrl+F10 pro odhlášení."
   },
   "da": {
     "ready": "Skriv",
@@ -19,7 +23,11 @@
     "message": "Vil du spille i deling? Jeg er i kamp lige nu.",
     "message_hangar": "Vil du spille i deling?",
     "settings_hotkey": "Genvej til besked",
-    "settings_hint": "Vælg en tast, eventuelt med Ctrl, Alt eller Shift. Ctrl+F9 / Ctrl+F10 er reserveret til test."
+    "settings_disabled": "Deaktiveret",
+    "settings_save_error": "Indstillingerne kunne ikke gemmes. Kontrollér filens tilladelser.",
+    "settings_invalid": "Ugyldig genvej",
+    "settings_dev_mode": "Udviklertilstand",
+    "settings_dev_description": "Aktiverer testbeskeder: Ctrl+F9 for online, Ctrl+F10 for offline."
   },
   "de": {
     "ready": "Nachricht",
@@ -30,7 +38,11 @@
     "message": "Lust auf einen Zug? Ich bin gerade im Gefecht.",
     "message_hangar": "Lust auf einen Zug?",
     "settings_hotkey": "Tastenkürzel für Nachrichten",
-    "settings_hint": "Wähle eine Taste, optional mit Strg, Alt oder Umschalt. Strg+F9 / Strg+F10 ist für Tests reserviert."
+    "settings_disabled": "Deaktiviert",
+    "settings_save_error": "Einstellungen konnten nicht gespeichert werden. Dateiberechtigungen prüfen.",
+    "settings_invalid": "Ungültiges Tastenkürzel",
+    "settings_dev_mode": "Entwicklermodus",
+    "settings_dev_description": "Aktiviert Testmeldungen: Strg+F9 für online, Strg+F10 für offline."
   },
   "en": {
     "ready": "Whisper",
@@ -41,7 +53,11 @@
     "message": "Want to platoon? I'm in battle now.",
     "message_hangar": "Want to platoon?",
     "settings_hotkey": "Message hotkey",
-    "settings_hint": "Choose one key, optionally with Ctrl, Alt or Shift. Ctrl+F9 / Ctrl+F10 is reserved for testing."
+    "settings_disabled": "Disabled",
+    "settings_save_error": "Could not save settings. Check file permissions and try again.",
+    "settings_invalid": "Invalid shortcut",
+    "settings_dev_mode": "Dev mode",
+    "settings_dev_description": "Enables test notifications: Ctrl+F9 for online, Ctrl+F10 for offline."
   },
   "es": {
     "ready": "Mensaje",
@@ -52,7 +68,11 @@
     "message": "¿Quieres formar un pelotón? Ahora estoy en batalla.",
     "message_hangar": "¿Quieres formar un pelotón?",
     "settings_hotkey": "Atajo para mensajes",
-    "settings_hint": "Elige una tecla, opcionalmente con Ctrl, Alt o Mayús. Ctrl+F9 / Ctrl+F10 está reservado para pruebas."
+    "settings_disabled": "Desactivado",
+    "settings_save_error": "No se pudo guardar la configuración. Comprueba los permisos del archivo.",
+    "settings_invalid": "Atajo no válido",
+    "settings_dev_mode": "Modo de desarrollo",
+    "settings_dev_description": "Activa avisos de prueba: Ctrl+F9 para conectado, Ctrl+F10 para desconectado."
   },
   "et": {
     "ready": "Kirjuta",
@@ -63,7 +83,11 @@
     "message": "Kas mängime rühmas? Olen praegu lahingus.",
     "message_hangar": "Kas mängime rühmas?",
     "settings_hotkey": "Sõnumi kiirklahv",
-    "settings_hint": "Vali klahv, soovi korral koos Ctrl, Alt või Shiftiga. Ctrl+F9 / Ctrl+F10 on reserveeritud testimiseks."
+    "settings_disabled": "Keelatud",
+    "settings_save_error": "Seadeid ei saanud salvestada. Kontrolli faili õigusi.",
+    "settings_invalid": "Vigane otsetee",
+    "settings_dev_mode": "Arendajarežiim",
+    "settings_dev_description": "Lubab testteavitused: Ctrl+F9 võrgus, Ctrl+F10 võrgust väljas."
   },
   "fi": {
     "ready": "Viesti",
@@ -74,7 +98,11 @@
     "message": "Haluatko joukkueeseen? Olen nyt taistelussa.",
     "message_hangar": "Haluatko joukkueeseen?",
     "settings_hotkey": "Viestin pikanäppäin",
-    "settings_hint": "Valitse näppäin, halutessasi Ctrl-, Alt- tai Shift-näppäimen kanssa. Ctrl+F9 / Ctrl+F10 on varattu testaukseen."
+    "settings_disabled": "Pois",
+    "settings_save_error": "Asetuksia ei voitu tallentaa. Tarkista tiedoston käyttöoikeudet.",
+    "settings_invalid": "Virheellinen pikanäppäin",
+    "settings_dev_mode": "Kehittäjätila",
+    "settings_dev_description": "Ottaa testi-ilmoitukset käyttöön: Ctrl+F9 paikalla, Ctrl+F10 poissa."
   },
   "fr": {
     "ready": "Message",
@@ -85,7 +113,11 @@
     "message": "Tu veux jouer en peloton ? Je suis en bataille.",
     "message_hangar": "Tu veux jouer en peloton ?",
     "settings_hotkey": "Raccourci de message",
-    "settings_hint": "Choisissez une touche, avec Ctrl, Alt ou Maj si nécessaire. Ctrl+F9 / Ctrl+F10 est réservé aux tests."
+    "settings_disabled": "Désactivé",
+    "settings_save_error": "Impossible d’enregistrer les paramètres. Vérifiez les droits du fichier.",
+    "settings_invalid": "Raccourci non valide",
+    "settings_dev_mode": "Mode développeur",
+    "settings_dev_description": "Active les notifications de test : Ctrl+F9 pour en ligne, Ctrl+F10 pour hors ligne."
   },
   "hu": {
     "ready": "Üzenet",
@@ -96,7 +128,11 @@
     "message": "Van kedved szakaszban játszani? Most csatában vagyok.",
     "message_hangar": "Van kedved szakaszban játszani?",
     "settings_hotkey": "Üzenet gyorsbillentyűje",
-    "settings_hint": "Válassz egy billentyűt, opcionálisan Ctrl, Alt vagy Shift mellett. A Ctrl+F9 / Ctrl+F10 tesztelésre van fenntartva."
+    "settings_disabled": "Letiltva",
+    "settings_save_error": "A beállítások nem menthetők. Ellenőrizd a fájl jogosultságait.",
+    "settings_invalid": "Érvénytelen gyorsbillentyű",
+    "settings_dev_mode": "Fejlesztői mód",
+    "settings_dev_description": "Tesztértesítések engedélyezése: Ctrl+F9 online, Ctrl+F10 offline állapot."
   },
   "it": {
     "ready": "Messaggio",
@@ -107,7 +143,11 @@
     "message": "Vuoi giocare in plotone? Ora sono in battaglia.",
     "message_hangar": "Vuoi giocare in plotone?",
     "settings_hotkey": "Scorciatoia messaggio",
-    "settings_hint": "Scegli un tasto, anche con Ctrl, Alt o Maiusc. Ctrl+F9 / Ctrl+F10 è riservato ai test."
+    "settings_disabled": "Disattivato",
+    "settings_save_error": "Impossibile salvare le impostazioni. Controlla i permessi del file.",
+    "settings_invalid": "Scorciatoia non valida",
+    "settings_dev_mode": "Modalità sviluppatore",
+    "settings_dev_description": "Abilita le notifiche di prova: Ctrl+F9 online, Ctrl+F10 offline."
   },
   "ja": {
     "ready": "メッセージ",
@@ -118,7 +158,11 @@
     "message": "小隊を組みませんか？今は戦闘中です。",
     "message_hangar": "小隊を組みませんか？",
     "settings_hotkey": "メッセージのホットキー",
-    "settings_hint": "キーを1つ選択します。Ctrl、Alt、Shiftも組み合わせられます。Ctrl+F9 / Ctrl+F10はテスト用です。"
+    "settings_disabled": "無効",
+    "settings_save_error": "設定を保存できません。ファイルのアクセス権を確認してください。",
+    "settings_invalid": "無効なショートカット",
+    "settings_dev_mode": "開発者モード",
+    "settings_dev_description": "テスト通知を有効化：Ctrl+F9はオンライン、Ctrl+F10はオフライン。"
   },
   "ko": {
     "ready": "귓속말",
@@ -129,7 +173,11 @@
     "message": "소대 플레이할까요? 지금은 전투 중이에요.",
     "message_hangar": "소대 플레이할까요?",
     "settings_hotkey": "메시지 단축키",
-    "settings_hint": "키 하나를 선택하세요. Ctrl, Alt, Shift와 조합할 수 있습니다. Ctrl+F9 / Ctrl+F10은 테스트용입니다."
+    "settings_disabled": "사용 안 함",
+    "settings_save_error": "설정을 저장할 수 없습니다. 파일 권한을 확인하세요.",
+    "settings_invalid": "잘못된 단축키",
+    "settings_dev_mode": "개발자 모드",
+    "settings_dev_description": "테스트 알림 활성화: Ctrl+F9는 온라인, Ctrl+F10은 오프라인입니다."
   },
   "lt": {
     "ready": "Rašyti",
@@ -140,7 +188,11 @@
     "message": "Gal žaidžiame būryje? Dabar esu mūšyje.",
     "message_hangar": "Gal žaidžiame būryje?",
     "settings_hotkey": "Žinutės spartusis klavišas",
-    "settings_hint": "Pasirinkite klavišą, prireikus su Ctrl, Alt ar Shift. Ctrl+F9 / Ctrl+F10 skirtas testavimui."
+    "settings_disabled": "Išjungta",
+    "settings_save_error": "Nepavyko išsaugoti nustatymų. Patikrinkite failo teises.",
+    "settings_invalid": "Netinkamas derinys",
+    "settings_dev_mode": "Kūrėjo režimas",
+    "settings_dev_description": "Įjungia bandomuosius pranešimus: Ctrl+F9 prisijungus, Ctrl+F10 atsijungus."
   },
   "nl": {
     "ready": "Bericht",
@@ -151,7 +203,11 @@
     "message": "Zin om in een peloton te spelen? Ik zit nu in een gevecht.",
     "message_hangar": "Zin om in een peloton te spelen?",
     "settings_hotkey": "Sneltoets voor berichten",
-    "settings_hint": "Kies een toets, eventueel met Ctrl, Alt of Shift. Ctrl+F9 / Ctrl+F10 is gereserveerd voor tests."
+    "settings_disabled": "Uitgeschakeld",
+    "settings_save_error": "Instellingen opslaan mislukt. Controleer de bestandsrechten.",
+    "settings_invalid": "Ongeldige sneltoets",
+    "settings_dev_mode": "Ontwikkelaarsmodus",
+    "settings_dev_description": "Schakelt testmeldingen in: Ctrl+F9 voor online, Ctrl+F10 voor offline."
   },
   "pl": {
     "ready": "Napisz",
@@ -162,7 +218,11 @@
     "message": "Chcesz zagrać w plutonie? Jestem teraz w bitwie.",
     "message_hangar": "Chcesz zagrać w plutonie?",
     "settings_hotkey": "Skrót wiadomości",
-    "settings_hint": "Wybierz klawisz, opcjonalnie z Ctrl, Alt lub Shift. Ctrl+F9 / Ctrl+F10 jest zarezerwowany do testów."
+    "settings_disabled": "Wyłączony",
+    "settings_save_error": "Nie udało się zapisać ustawień. Sprawdź uprawnienia do pliku.",
+    "settings_invalid": "Nieprawidłowy skrót",
+    "settings_dev_mode": "Tryb deweloperski",
+    "settings_dev_description": "Włącza powiadomienia testowe: Ctrl+F9 — online, Ctrl+F10 — offline."
   },
   "pt": {
     "ready": "Mensagem",
@@ -173,7 +233,11 @@
     "message": "Quer jogar em pelotão? Estou em batalha agora.",
     "message_hangar": "Quer jogar em pelotão?",
     "settings_hotkey": "Atalho de mensagem",
-    "settings_hint": "Escolha uma tecla, opcionalmente com Ctrl, Alt ou Shift. Ctrl+F9 / Ctrl+F10 está reservado para testes."
+    "settings_disabled": "Desativado",
+    "settings_save_error": "Não foi possível guardar as definições. Verifique as permissões do ficheiro.",
+    "settings_invalid": "Atalho inválido",
+    "settings_dev_mode": "Modo de programador",
+    "settings_dev_description": "Ativa notificações de teste: Ctrl+F9 online, Ctrl+F10 offline."
   },
   "ro": {
     "ready": "Mesaj",
@@ -184,7 +248,11 @@
     "message": "Vrei să jucăm în pluton? Acum sunt în luptă.",
     "message_hangar": "Vrei să jucăm în pluton?",
     "settings_hotkey": "Scurtătură pentru mesaj",
-    "settings_hint": "Alege o tastă, opțional cu Ctrl, Alt sau Shift. Ctrl+F9 / Ctrl+F10 este rezervat pentru testare."
+    "settings_disabled": "Dezactivat",
+    "settings_save_error": "Setările nu au putut fi salvate. Verifică permisiunile fișierului.",
+    "settings_invalid": "Scurtătură invalidă",
+    "settings_dev_mode": "Mod dezvoltator",
+    "settings_dev_description": "Activează notificările de test: Ctrl+F9 online, Ctrl+F10 offline."
   },
   "ru": {
     "ready": "Написать",
@@ -195,7 +263,11 @@
     "message": "Хочешь сыграть взводом? Я сейчас в бою.",
     "message_hangar": "Хочешь сыграть взводом?",
     "settings_hotkey": "Клавиша сообщения",
-    "settings_hint": "Выберите клавишу, при необходимости с Ctrl, Alt или Shift. Ctrl+F9 / Ctrl+F10 зарезервировано для тестирования."
+    "settings_disabled": "Отключено",
+    "settings_save_error": "Не удалось сохранить настройки. Проверьте права доступа к файлу.",
+    "settings_invalid": "Недопустимое сочетание",
+    "settings_dev_mode": "Режим разработчика",
+    "settings_dev_description": "Включает тестовые уведомления: Ctrl+F9 — в сети, Ctrl+F10 — не в сети."
   },
   "sv": {
     "ready": "Meddelande",
@@ -206,7 +278,11 @@
     "message": "Vill du spela i pluton? Jag är i strid just nu.",
     "message_hangar": "Vill du spela i pluton?",
     "settings_hotkey": "Snabbtangent för meddelanden",
-    "settings_hint": "Välj en tangent, eventuellt med Ctrl, Alt eller Shift. Ctrl+F9 / Ctrl+F10 är reserverat för testning."
+    "settings_disabled": "Avstängd",
+    "settings_save_error": "Inställningarna kunde inte sparas. Kontrollera filens behörigheter.",
+    "settings_invalid": "Ogiltig genväg",
+    "settings_dev_mode": "Utvecklarläge",
+    "settings_dev_description": "Aktiverar testaviseringar: Ctrl+F9 online, Ctrl+F10 offline."
   },
   "th": {
     "ready": "ส่งข้อความ",
@@ -217,7 +293,11 @@
     "message": "เล่นเป็นหมวดรถถังด้วยกันไหม? ตอนนี้ฉันอยู่ในการรบ",
     "message_hangar": "เล่นเป็นหมวดรถถังด้วยกันไหม?",
     "settings_hotkey": "ปุ่มลัดส่งข้อความ",
-    "settings_hint": "เลือกหนึ่งปุ่ม โดยใช้ร่วมกับ Ctrl, Alt หรือ Shift ได้ Ctrl+F9 / Ctrl+F10 สงวนไว้สำหรับการทดสอบ"
+    "settings_disabled": "ปิดใช้งาน",
+    "settings_save_error": "บันทึกการตั้งค่าไม่ได้ โปรดตรวจสอบสิทธิ์ของไฟล์",
+    "settings_invalid": "ปุ่มลัดไม่ถูกต้อง",
+    "settings_dev_mode": "โหมดนักพัฒนา",
+    "settings_dev_description": "เปิดการแจ้งเตือนทดสอบ: Ctrl+F9 ออนไลน์, Ctrl+F10 ออฟไลน์"
   },
   "tr": {
     "ready": "Mesaj",
@@ -228,7 +308,11 @@
     "message": "Takım oynamak ister misin? Şu an savaştayım.",
     "message_hangar": "Takım oynamak ister misin?",
     "settings_hotkey": "Mesaj kısayolu",
-    "settings_hint": "İstersen Ctrl, Alt veya Shift ile birlikte bir tuş seç. Ctrl+F9 / Ctrl+F10 test için ayrılmıştır."
+    "settings_disabled": "Devre dışı",
+    "settings_save_error": "Ayarlar kaydedilemedi. Dosya izinlerini kontrol edin.",
+    "settings_invalid": "Geçersiz kısayol",
+    "settings_dev_mode": "Geliştirici modu",
+    "settings_dev_description": "Test bildirimlerini açar: Ctrl+F9 çevrimiçi, Ctrl+F10 çevrimdışı."
   },
   "uk": {
     "ready": "Написати",
@@ -239,7 +323,11 @@
     "message": "Хочеш зіграти взводом? Я зараз у бою.",
     "message_hangar": "Хочеш зіграти взводом?",
     "settings_hotkey": "Клавіша повідомлення",
-    "settings_hint": "Оберіть клавішу, за потреби з Ctrl, Alt або Shift. Ctrl+F9 / Ctrl+F10 зарезервовано для тестування."
+    "settings_disabled": "Вимкнено",
+    "settings_save_error": "Не вдалося зберегти налаштування. Перевірте права доступу до файлу.",
+    "settings_invalid": "Неприпустиме сполучення",
+    "settings_dev_mode": "Режим розробника",
+    "settings_dev_description": "Вмикає тестові сповіщення: Ctrl+F9 — у мережі, Ctrl+F10 — поза мережею."
   },
   "vi": {
     "ready": "Nhắn tin",
@@ -250,7 +338,11 @@
     "message": "Bạn muốn chơi trung đội không? Mình đang trong trận.",
     "message_hangar": "Bạn muốn chơi trung đội không?",
     "settings_hotkey": "Phím tắt nhắn tin",
-    "settings_hint": "Chọn một phím, có thể kết hợp Ctrl, Alt hoặc Shift. Ctrl+F9 / Ctrl+F10 được dành cho thử nghiệm."
+    "settings_disabled": "Đã tắt",
+    "settings_save_error": "Không thể lưu cài đặt. Hãy kiểm tra quyền truy cập tệp.",
+    "settings_invalid": "Phím tắt không hợp lệ",
+    "settings_dev_mode": "Chế độ nhà phát triển",
+    "settings_dev_description": "Bật thông báo thử nghiệm: Ctrl+F9 trực tuyến, Ctrl+F10 ngoại tuyến."
   },
   "zh-cn": {
     "ready": "私聊",
@@ -261,7 +353,11 @@
     "message": "要一起组队吗？我现在正在战斗中。",
     "message_hangar": "要一起组队吗？",
     "settings_hotkey": "消息快捷键",
-    "settings_hint": "选择一个按键，可搭配Ctrl、Alt或Shift。Ctrl+F9 / Ctrl+F10保留用于测试。"
+    "settings_disabled": "已禁用",
+    "settings_save_error": "无法保存设置。请检查文件权限。",
+    "settings_invalid": "无效的快捷键",
+    "settings_dev_mode": "开发者模式",
+    "settings_dev_description": "启用测试通知：Ctrl+F9 为在线，Ctrl+F10 为离线。"
   },
   "zh-tw": {
     "ready": "私訊",
@@ -272,6 +368,10 @@
     "message": "要一起組隊嗎？我現在正在戰鬥中。",
     "message_hangar": "要一起組隊嗎？",
     "settings_hotkey": "訊息快捷鍵",
-    "settings_hint": "選擇一個按鍵，可搭配Ctrl、Alt或Shift。Ctrl+F9 / Ctrl+F10保留用於測試。"
+    "settings_disabled": "已停用",
+    "settings_save_error": "無法儲存設定。請檢查檔案權限。",
+    "settings_invalid": "無效的快速鍵",
+    "settings_dev_mode": "開發者模式",
+    "settings_dev_description": "啟用測試通知：Ctrl+F9 為在線，Ctrl+F10 為離線。"
   }
 }

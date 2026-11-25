@@ -432,6 +432,7 @@ with open(u$bytecodeLiteral, 'wb') as bytecode:
     $assets = [ordered]@{
         "res/scripts/client/gui/mods/$moduleName.pyc" = $bytecode
         "$textureRoot/whisper-labels.json" = $whisperLabelsPath
+        "res/gui/flash/tankmateSettings.swf" = (Join-Path $probeRoot 'tankmate-settings.swf')
     }
     foreach ($name in $statusImages.Keys) { $assets[$name] = $statusImages[$name] }
     [WotProbePython]::WritePackage($buildStaging, $manifest, $assets.Keys, $assets.Values)
@@ -456,7 +457,7 @@ with open(u$bytecodeLiteral, 'wb') as bytecode:
     $configPath = Join-Path $configDirectory 'tankmate_signal.json'
     if (-not (Test-Path -LiteralPath $configPath)) {
         [IO.Directory]::CreateDirectory($configDirectory) | Out-Null
-        [IO.File]::WriteAllText($configPath, '{ "whisper_hotkey": "CTRL+T" }' + [Environment]::NewLine,
+        [IO.File]::WriteAllText($configPath, '{ "whisper_hotkey": "CTRL+T", "dev_mode": false }' + [Environment]::NewLine,
             [Text.UTF8Encoding]::new($false))
     }
 } finally {

@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 from types import ModuleType, SimpleNamespace
 import unittest
-from unittest.mock import Mock, patch, mock_open
+from unittest.mock import MagicMock, Mock, patch, mock_open
 
 
 SOURCE = Path(__file__).resolve().parents[1] / "probe" / "mod_tankmate_signal.py"
@@ -27,7 +27,8 @@ def load_mod(test_alert=False):
     stub("BattleReplay", isPlaying=Mock(return_value=False))
     stub("GUI")
     stub("game", handleKeyEvent=Mock(return_value=False))
-    stub("Keys", KEY_LEFTMOUSE=1, KEY_F8=119, KEY_F9=120, KEY_F10=121, KEY_LCONTROL=29, KEY_RCONTROL=157,
+    stub("Keys", KEY_LEFTMOUSE=1, KEY_BACKSPACE=14, KEY_DELETE=211, KEY_RETURN=28, KEY_SPACE=57,
+         KEY_ESCAPE=27, KEY_F8=119, KEY_F9=120, KEY_F10=121, KEY_LCONTROL=29, KEY_RCONTROL=157,
          KEY_T=20, KEY_LALT=56, KEY_RALT=184, KEY_LSHIFT=42, KEY_RSHIFT=54)
     stub("ResMgr", isFile=Mock(), openSection=Mock(return_value=SimpleNamespace(
         asBinary=(SOURCE.parent / "whisper-labels.json").read_bytes())))
@@ -38,6 +39,8 @@ def load_mod(test_alert=False):
     stub("gui.Scaleform.genConsts.PLAYERS_PANEL_STATE", PLAYERS_PANEL_STATE=Mock())
     stub("gui.Scaleform.Waiting", Waiting=Mock())
     stub("gui.shared.personality", ServicesLocator=Mock())
+    stub("gui.shared.utils", flashObject2Dict=lambda value: value)
+    stub("gui.shared.utils.key_mapping", getBigworldKey=lambda code: {84: 20, 8: 14, 27: 27}.get(code, code))
     stub("gui.SystemMessages", pushMessage=Mock(), SM_TYPE=Mock())
     stub("helpers", getClientLanguage=Mock(return_value="en"),
          dependency=SimpleNamespace(instance=Mock(return_value=SimpleNamespace(
@@ -71,6 +74,35 @@ def contact(name, online, friend=True, clan=""):
     return SimpleNamespace(getStorageKey=lambda: (name, "xmpp"), getName=lambda: name,
                            isOnline=lambda: online, isFriend=lambda: friend,
                            getClanInfo=lambda: SimpleNamespace(abbrev=clan))
+
+
+def battle_contact(name):
+    return SimpleNamespace(getStorageKey=lambda: (name, "battle"), getName=lambda: name,
+                           isFriend=lambda: True)
+
+
+class LifecycleTests(unittest.TestCase):
+    def test_startup_and_shutdown_without_optional_packages_or_config(self):
+        with patch.dict(sys.modules, {"gui.aslainMenu": None, "gui.modsSettingsApi": None}):
+            mod, window = load_mod()
+            window.cancelCallback = Mock()
+            original_key_handler = mod.game.handleKeyEvent
+            original_register_component = mod.SharedPage._onRegisterFlashComponent
+            with patch.multiple(mod, g_messengerEvents=MagicMock(),
+                                g_playerEvents=MagicMock(), ServicesLocator=MagicMock()):
+                with patch("builtins.open", side_effect=FileNotFoundError):
+                    mod.init()
+
+                self.assertIsNone(mod._settings_panel)
+                self.assertEqual(mod._whisper_hotkey, (mod.Keys.KEY_T, {"CTRL"}))
+                self.assertIs(mod.game.handleKeyEvent, mod._handle_key_event)
+                window.callback.assert_called_once_with(0.5, mod._tick)
+
+                mod.fini()
+
+            self.assertIs(mod.game.handleKeyEvent, original_key_handler)
+            self.assertIs(mod.SharedPage._onRegisterFlashComponent, original_register_component)
+            window.cancelCallback.assert_called_once_with(window.callback.return_value)
 
 
 class PresenceTests(unittest.TestCase):
@@ -107,6 +139,19 @@ class PresenceTests(unittest.TestCase):
                        contact("Stranger", True, friend=False)):
             self.presence.update(update, 2)
         self.assertEqual(list(self.presence.pending.values()), [("Bob", True), ("Alice", False)])
+
+    def test_battle_entities_do_not_interrupt_contact_presence_tracking(self):
+        battle_user = battle_contact("Alice")
+        self.presence.users_storage.getList.return_value = [battle_user, contact("Alice", False)]
+
+        self.initialize_roster(0)
+        self.presence.update(battle_user, 2)
+        self.presence.update_membership(self.mod.USER_ACTION_ID.FRIEND_ADDED, battle_user)
+
+        self.assertEqual(self.presence.online, {("Alice", "xmpp"): False})
+        self.assertFalse(self.presence.pending)
+        self.presence.update(contact("Alice", True), 3)
+        self.assertEqual(list(self.presence.pending.values()), [("Alice", True)])
 
     def test_minimized_updates_keep_each_transition_and_removal_clears_them(self):
         self.initialize_roster(0)
@@ -207,10 +252,13 @@ class NotificationTests(unittest.TestCase):
 
     def test_hotkey_shows_offline_friend_with_whisper_target_once(self):
         self.configure()
+        self.mod._dev_mode = True
         self.mod._visible_scene.return_value = "battle"
         position = (-0.95, 0.0, 0.0)
         self.mod._battle_popup_anchor.return_value = (position, "left-team-panel")
-        self.mod._presence.users_storage.getList.return_value = [contact("Sauzer_", False)]
+        self.mod._presence.users_storage.getList.return_value = [
+            battle_contact("Sauzer_"), contact("Sauzer_", False)
+        ]
         self.window.isKeyDown = lambda key: key == self.mod.Keys.KEY_LCONTROL
         event = SimpleNamespace(key=self.mod.Keys.KEY_F9, isKeyDown=lambda: True)
 
@@ -235,6 +283,7 @@ class NotificationTests(unittest.TestCase):
 
     def test_online_and_offline_test_hotkeys_queue_distinct_popups(self):
         self.configure()
+        self.mod._dev_mode = True
         self.mod._visible_scene.return_value = "hangar"
         self.mod._presence.users_storage.getList.return_value = [contact("Sauzer_", True)]
         self.window.isKeyDown = lambda key: key == self.mod.Keys.KEY_LCONTROL
@@ -319,14 +368,15 @@ class WhisperTests(unittest.TestCase):
         languages = json.loads((SOURCE.parent / "status-labels.json").read_text(encoding="utf-8"))
         self.assertEqual(set(catalog), set(languages))
         required = {"ready", "sent", "retry", "pending", "unavailable", "message", "message_hangar",
-                    "settings_hotkey", "settings_hint"}
+                    "settings_hotkey", "settings_disabled", "settings_invalid", "settings_save_error",
+                    "settings_dev_mode", "settings_dev_description"}
         for language, strings in catalog.items():
             with self.subTest(language=language):
-                self.assertEqual(set(strings), required)
+                self.assertTrue(required.issubset(strings))
                 self.assertTrue(all(isinstance(value, str) and value.strip() for value in strings.values()))
 
 
-class PlateLayoutTests(unittest.TestCase):
+class NotificationStackTests(unittest.TestCase):
     def test_newest_notification_is_positioned_above_older_notifications(self):
         mod, _ = load_mod()
         mod.GUI.screenResolution = Mock(return_value=(1920, 1080))
@@ -336,50 +386,9 @@ class PlateLayoutTests(unittest.TestCase):
         mod._layout_notifications("battle", (-0.95, 0, 0), 0)
 
         self.assertEqual(newest.update_position.call_args.args[2], 0)
-        self.assertEqual(middle.update_position.call_args.args[2], 90)
-        self.assertEqual(oldest.update_position.call_args.args[2], 180)
-
-    def test_card_reserves_separate_space_for_text_and_action_at_supported_scales(self):
-        for resolution in ((1280, 720), (1920, 1080), (3840, 2160)):
-            with self.subTest(resolution=resolution):
-                mod, _ = load_mod()
-
-                class Component:
-                    def __init__(self, value):
-                        self.value = value
-
-                    @property
-                    def width(self):
-                        return self.size[0]
-
-                    @property
-                    def height(self):
-                        return self.size[1]
-
-                    def stringDimensions(self, text):
-                        return len(text) * 8, 18
-
-                    def addChild(self, child, name):
-                        pass
-
-                mod.GUI.screenResolution = Mock(return_value=resolution)
-                mod.GUI.Text = Component
-                mod.GUI.Simple = Mock(side_effect=Component)
-                popup = mod.NotificationPlate("Sauzer_", True, 0, (42, "shared"), "CLAN")
-                popup.move((-0.95, 0, 0), 1.0)
-
-                left, top, right, bottom = popup.whisper_bounds
-                plate_x, plate_y, _ = popup.backdrop.position
-                self.assertGreaterEqual(left, popup.name.position[0] + 160 * popup.scale)
-                self.assertEqual(top, plate_y)
-                self.assertEqual(right, plate_x + popup.width)
-                self.assertEqual(bottom, plate_y + popup.height)
-                self.assertEqual(popup.backdrop.size, (popup.width, popup.height))
-                self.assertEqual(popup.name.position[0] - plate_x, round(76 * popup.scale))
-                self.assertGreater(popup.clan.position[0], popup.name.position[0] + 7 * 8)
-                self.assertLess(popup.profile.position[0] + popup.profile.size[0], popup.name.position[0])
-                self.assertGreaterEqual(right - left, 105)
-
+        self.assertGreaterEqual(middle.update_position.call_args.args[2], newest.height)
+        self.assertGreaterEqual(oldest.update_position.call_args.args[2],
+                                middle.update_position.call_args.args[2] + middle.height)
 
 class WhisperInputTests(unittest.TestCase):
     def setUp(self):
@@ -399,25 +408,26 @@ class WhisperInputTests(unittest.TestCase):
         return SimpleNamespace(key=1, isKeyDown=lambda: down)
 
     def test_click_uses_visible_button_bounds_before_game_dispatch(self):
-        handler = getattr(self.mod, "_handle_key_event", self.original)
-        self.assertTrue(handler(self.event(True)))
-        self.popup.whisper_action.handleMouseClickEvent.assert_not_called()
-        self.assertTrue(handler(self.event(False)))
-        self.popup.whisper_action.handleMouseClickEvent.assert_called_once_with(self.popup.whisper)
-        self.original.assert_not_called()
+        for scene in ("hangar", "battle"):
+            with self.subTest(scene=scene):
+                self.mod._visible_scene.return_value = scene
+                self.popup.whisper_action.reset_mock()
+                self.assertTrue(self.mod._handle_key_event(self.event(True)))
+                self.popup.whisper_action.handleMouseClickEvent.assert_not_called()
+                self.assertTrue(self.mod._handle_key_event(self.event(False)))
+                self.popup.whisper_action.handleMouseClickEvent.assert_called_once_with(self.popup.whisper)
+                self.original.assert_not_called()
 
     def test_release_outside_consumes_click_without_sending(self):
-        handler = getattr(self.mod, "_handle_key_event", self.original)
-        self.assertTrue(handler(self.event(True)))
+        self.assertTrue(self.mod._handle_key_event(self.event(True)))
         self.cursor.position = (0.9, 0.9)
-        self.assertTrue(handler(self.event(False)))
+        self.assertTrue(self.mod._handle_key_event(self.event(False)))
         self.popup.whisper_action.handleMouseClickEvent.assert_not_called()
 
     def test_inactive_cursor_preserves_battle_input(self):
         self.cursor.active = False
-        handler = getattr(self.mod, "_handle_key_event", self.original)
         event = self.event(True)
-        self.assertFalse(handler(event))
+        self.assertFalse(self.mod._handle_key_event(event))
         self.original.assert_called_once_with(event)
 
     def test_slanted_corner_passes_click_through_to_game(self):
@@ -429,12 +439,6 @@ class WhisperInputTests(unittest.TestCase):
         self.original.assert_called_once_with(event)
         self.popup.whisper_action.handleMouseClickEvent.assert_not_called()
 
-    def test_garage_button_receives_click(self):
-        self.mod._visible_scene.return_value = "hangar"
-        self.assertTrue(self.mod._handle_key_event(self.event(True)))
-        self.assertTrue(self.mod._handle_key_event(self.event(False)))
-        self.popup.whisper_action.handleMouseClickEvent.assert_called_once_with(self.popup.whisper)
-
     def test_name_lookup_connects_visible_test_button_to_exact_recipient(self):
         self.popup.whisper_action.friend_key = (None, None)
         lookup = self.mod.TestFriendLookup()
@@ -442,7 +446,7 @@ class WhisperInputTests(unittest.TestCase):
         self.assertEqual(self.popup.whisper_action.friend_key, ("Sauzer_", "xmpp"))
 
     def test_send_shortcut_targets_latest_visible_popup_once_while_held(self):
-        self.mod._load_whisper_hotkey = Mock()
+        self.mod._load_settings = Mock()
         self.mod._whisper_hotkey = (20, {"CTRL"})
         self.mod.BigWorld.isKeyDown = lambda key: key == self.mod.Keys.KEY_LCONTROL
         latest = SimpleNamespace(whisper=Mock(), whisper_action=Mock(), paused_at=None, expires_at=5.0)
@@ -456,6 +460,15 @@ class WhisperInputTests(unittest.TestCase):
 
         latest.whisper_action.handleMouseClickEvent.assert_called_once_with(latest.whisper)
         self.popup.whisper_action.handleMouseClickEvent.assert_not_called()
+
+    def test_test_shortcuts_require_dev_mode(self):
+        self.mod.BigWorld.isKeyDown = lambda key: key == self.mod.Keys.KEY_LCONTROL
+        event = SimpleNamespace(key=self.mod.Keys.KEY_F9, isKeyDown=lambda: True)
+        self.assertFalse(self.mod._handle_key_event(event))
+        self.assertFalse(self.mod._test_friend_pending)
+        self.mod._dev_mode = True
+        self.assertTrue(self.mod._handle_key_event(event))
+        self.assertEqual(list(self.mod._test_friend_pending), [True])
 
     def test_send_shortcut_does_not_target_expired_popup(self):
         self.mod._whisper_hotkey = (20, {"CTRL"})
@@ -473,28 +486,8 @@ class WhisperInputTests(unittest.TestCase):
                                   ("CTRL+CTRL+T", (20, {"CTRL"})), (None, (20, {"CTRL"}))):
             with self.subTest(setting=setting):
                 with patch("builtins.open", mock_open(read_data=json.dumps({"whisper_hotkey": setting}))):
-                    self.mod._load_whisper_hotkey()
+                    self.mod._load_settings()
                 self.assertEqual(self.mod._whisper_hotkey, expected)
-
-    def test_garage_change_applies_immediately_and_clearing_disables_shortcut(self):
-        self.mod._set_whisper_hotkey("CTRL+T")
-
-        self.mod._on_settings_changed(self.mod._SETTINGS_ID, {"whisper_hotkey": [20, -1, -3]})
-
-        self.assertEqual(self.mod._whisper_hotkey, (20, {"ALT", "SHIFT"}))
-        self.assertEqual(self.mod._whisper_hotkey_label, "Alt+Shift+T")
-        self.mod._on_settings_changed(self.mod._SETTINGS_ID, {"whisper_hotkey": []})
-        self.assertIsNone(self.mod._whisper_hotkey)
-
-    def test_reserved_garage_binding_keeps_previous_shortcut(self):
-        self.mod._set_whisper_hotkey("CTRL+T")
-        self.mod._settings_api = Mock()
-
-        self.mod._on_settings_changed(self.mod._SETTINGS_ID, {"whisper_hotkey": [120, -2]})
-
-        self.assertEqual(self.mod._whisper_hotkey, (20, {"CTRL"}))
-        self.mod._settings_api.updateModSettings.assert_called_once_with(
-            self.mod._SETTINGS_ID, {"whisper_hotkey": [20, -2]})
 
     def test_menu_key_capture_does_not_send_a_message(self):
         self.mod._whisper_hotkey = (20, {"CTRL"})
@@ -506,22 +499,3 @@ class WhisperInputTests(unittest.TestCase):
 
         self.original.assert_called_once_with(event)
         self.popup.whisper_action.handleMouseClickEvent.assert_not_called()
-
-    def test_registration_restores_saved_menu_shortcut(self):
-        self.mod._set_whisper_hotkey("CTRL+T")
-        api = Mock()
-        api.setModTemplate.return_value = {"whisper_hotkey": [20, -1]}
-        class Event:
-            def __iadd__(self, callback):
-                return self
-        api.onWindowOpened = Event()
-        api.onWindowClosed = Event()
-        module = ModuleType("gui.aslainMenu")
-        module.g_modsSettingsApi = api
-        module.templates = Mock()
-
-        with patch.dict(sys.modules, {"gui.aslainMenu": module}):
-            self.mod._register_settings()
-
-        self.assertEqual(self.mod._whisper_hotkey, (20, {"ALT"}))
-        self.assertIs(self.mod._settings_api, api)

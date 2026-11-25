@@ -7,12 +7,15 @@ import re
 import struct
 from xml.etree import ElementTree
 from zipfile import BadZipFile, ZIP_STORED, ZipFile
+import zlib
 
 
 MODULE = "res/scripts/client/gui/mods/mod_tankmate_signal.pyc"
+SETTINGS_UI = "res/gui/flash/tankmateSettings.swf"
 TEXTURES = "res/gui/maps/icons/tankmate_signal/"
 ASSETS = {
     MODULE: b"\x03\xf3\r\n",  # Python 2.7 bytecode magic
+    SETTINGS_UI: b"CWS",
     TEXTURES + "plate.png": b"\x89PNG\r\n\x1a\n",
     TEXTURES + "profile-online.png": b"\x89PNG\r\n\x1a\n",
     TEXTURES + "profile-offline.png": b"\x89PNG\r\n\x1a\n",
@@ -53,6 +56,15 @@ def verify_package(path):
             with archive.open(name) as asset:
                 if asset.read(len(magic)) != magic:
                     raise ValueError("Unexpected file signature for " + name)
+        settings_ui = archive.read(SETTINGS_UI)
+        try:
+            body = zlib.decompress(settings_ui[8:])
+            size = struct.unpack("<I", settings_ui[4:8])[0]
+        except (zlib.error, struct.error):
+            raise ValueError("Invalid Settings UI SWF")
+        if len(body) + 8 != size or not all(name in body for name in (
+                b"as_setTankmateSettings", b"tankmate.signal", b"tankmateMods")):
+            raise ValueError("Settings UI does not provide the mod settings bridge")
 
         manifest = ElementTree.fromstring(archive.read(MANIFEST))
         version = manifest.findtext("version", default="")
