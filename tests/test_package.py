@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
-from tools.verify_package import ASSETS, MANIFEST, SETTINGS_UI, verify_package
+from tools.verify_package import ASSETS, MANIFEST, SETTINGS_UI, WELCOME_UI, verify_package
 
 
 class PackageTests(unittest.TestCase):
@@ -12,13 +12,16 @@ class PackageTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.package = Path(directory.name) / "tankmate-signal.wotmod"
 
-    def write_package(self, compression=ZIP_STORED, missing=None):
+    def write_package(self, compression=ZIP_STORED, missing=None, invalid_welcome=False):
         with ZipFile(self.package, "w", compression=compression, compresslevel=0) as archive:
             archive.writestr(MANIFEST, "<root><id>local.friendpresence.probe</id>"
                              "<name>Tankmate Signal</name><version>1.2.3</version></root>")
             for name, signature in ASSETS.items():
                 if name != missing:
-                    content = (Path(__file__).resolve().parents[1] / "probe" / "tankmate-settings.swf").read_bytes() if name == SETTINGS_UI else signature
+                    source = {SETTINGS_UI: 'tankmate-settings.swf', WELCOME_UI: 'tankmate-welcome.swf'}.get(name)
+                    content = (Path(__file__).resolve().parents[1] / 'probe' / source).read_bytes() if source else signature
+                    if name == WELCOME_UI and invalid_welcome:
+                        content = signature
                     archive.writestr(name, content)
 
     def test_accepts_expected_stored_package(self):
@@ -33,6 +36,11 @@ class PackageTests(unittest.TestCase):
     def test_rejects_missing_assets(self):
         self.write_package(missing=next(iter(ASSETS)))
         with self.assertRaisesRegex(ValueError, "Archive entries"):
+            verify_package(self.package)
+
+    def test_rejects_invalid_welcome_movie(self):
+        self.write_package(invalid_welcome=True)
+        with self.assertRaisesRegex(ValueError, 'Invalid welcome UI'):
             verify_package(self.package)
 
     def test_rejects_inconsistent_local_compression_header(self):

@@ -12,6 +12,8 @@ Notifications use an angular panel with a profile silhouette, colored status ind
 
 The button and message follow the current game language, with English as a fallback. The message asks to play in a Platoon and mentions that you are in battle when sent during battle.
 
+On first launch, a native welcome window explains the alerts, shows the existing notification banner, and displays your current message shortcut. It opens when the Garage is active and the client has focus. **Got it** saves the acknowledgement in the existing config and skips the welcome on future launches. **X** or **Esc** dismisses it for the current session; it returns next launch until acknowledged. Welcome text supports English and Ukrainian, with English as the fallback.
+
 Open **Settings → Mods → Tankmate Signal**. Click **Message hotkey**, then press a key combination. Press **Backspace** or **Delete** while capturing to disable the shortcut, or **Esc** to cancel capture. Click the game's **Apply** or **OK** button to save and activate changes. Closing the window without applying discards your edits.
 
 The **Dev mode** checkbox unlocks test notifications: **Ctrl+F9** for Sauzer_'s online notification and **Ctrl+F10** for offline, regardless of their actual status. Enabling it does not show a notification automatically. Dev mode defaults off and its saved value persists across launches. These combinations remain reserved for testing.
@@ -60,6 +62,12 @@ python tools/build_settings_ui.py --game-root $gameRoot --ffdec 'C:\Tools\ffdec'
 ```
 
 The companion JSON records the stock SWF, extension source, and generated asset checksums. Normal packaging and installation use the checked-in SWF and require neither Java nor FFDec.
+
+The welcome uses the client's native SimpleDialog frame and button, with its own root class and the mod's existing banner textures. Rebuild `probe/tankmate-welcome.swf` and its checksum metadata after changing `ui/TankmateWelcomeUI.as`:
+
+```powershell
+python tools/build_welcome_ui.py --game-root $gameRoot --ffdec 'C:\Tools\ffdec'
+```
 
 ## Release from main
 

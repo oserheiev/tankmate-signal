@@ -95,6 +95,11 @@ _settings_window_class = None
 _settings_hooks = {}
 _settings_panel = None
 _settings_open = False
+_WELCOME_ALIAS = 'tankmateWelcome'
+_welcome_read = False
+_welcome_shown = False
+_welcome_factory = None
+_welcome_view = None
 
 
 def _has_presence(user):
@@ -286,14 +291,16 @@ def _whisper_texture(state, hovered=False):
 
 
 def _load_settings():
-    global _dev_mode
+    global _dev_mode, _welcome_read
     _dev_mode = False
+    _welcome_read = False
     shortcut = _DEFAULT_WHISPER_HOTKEY
     try:
         with open(_CONFIG_PATH, 'rb') as settings_file:
             settings = json.load(settings_file)
             shortcut = settings.get('whisper_hotkey', shortcut)
             _dev_mode = settings.get('dev_mode', False) is True
+            _welcome_read = settings.get('welcome_read', False) is True
     except IOError:
         pass
     except (ValueError, AttributeError):
@@ -334,6 +341,10 @@ def _set_whisper_hotkey(shortcut):
 
 
 def _save_settings(shortcut, dev_mode):
+    _save_config({'whisper_hotkey': shortcut, 'dev_mode': dev_mode})
+
+
+def _save_config(updates):
     try:
         with open(_CONFIG_PATH, 'rb') as stream:
             settings = json.load(stream)
@@ -341,8 +352,7 @@ def _save_settings(shortcut, dev_mode):
             settings = {}
     except (IOError, ValueError):
         settings = {}
-    settings['whisper_hotkey'] = shortcut
-    settings['dev_mode'] = dev_mode
+    settings.update(updates)
     directory = os.path.dirname(_CONFIG_PATH)
     if not os.path.isdir(directory):
         os.makedirs(directory)
@@ -370,6 +380,112 @@ def _save_settings(shortcut, dev_mode):
     finally:
         if os.path.isfile(temporary):
             os.remove(temporary)
+
+
+def _acknowledge_welcome():
+    global _welcome_read
+    try:
+        _save_config({'welcome_read': True})
+    except (IOError, OSError):
+        _log('could not save welcome acknowledgement')
+        SystemMessages.pushMessage(_whisper_strings()['settings_save_error'], type=SystemMessages.SM_TYPE.Warning)
+        return False
+    _welcome_read = True
+    return True
+
+
+def _welcome_strings():
+    section = ResMgr.openSection(_PLATE_TEXTURE_ROOT + 'welcome-labels.json')
+    catalog = json.loads(section.asBinary.decode('utf-8'))
+    strings = dict(catalog['en'])
+    strings.update(catalog.get(getClientLanguage().lower().replace('_', '-'), {}))
+    return strings
+
+
+def _welcome_payload():
+    strings = _welcome_strings()
+    return {'intro': strings['intro'], 'headings': strings['headings'],
+            'alerts': strings['alerts'], 'message': strings['message'].format(
+                hotkey=_whisper_hotkey_label) if _whisper_hotkey_label else strings['message_mouse'],
+            'battle': strings['battle'], 'settings': strings['settings'],
+            'shortcut': _whisper_hotkey_label, 'statusImage': _status_texture(True),
+            'buttonImage': _whisper_texture('ready')}
+
+
+def _register_welcome():
+    global _welcome_factory
+    if _welcome_factory is not None:
+        return
+    from frameworks.wulf import WindowLayer
+    from gui.Scaleform.framework import GroupedViewSettings, ScopeTemplates
+    from gui.Scaleform.daapi.view.dialogs.SimpleDialog import SimpleDialog
+    from skeletons.gui.impl import IGuiLoader
+
+    class WelcomeDialog(SimpleDialog):
+        def __init__(self, **kwargs):
+            buttons = [{'id': 'submit', 'label': _welcome_strings()['got_it'], 'focused': True}]
+            SimpleDialog.__init__(self, '', 'Tankmate Signal', buttons, lambda unused: None,
+                                  ScopeTemplates.DEFAULT_SCOPE, 0, **kwargs)
+
+        def _populate(self):
+            global _welcome_view
+            SimpleDialog._populate(self)
+            _welcome_view = self
+            _hide_popups()
+            self.flashObject.as_setTankmateWelcome(_welcome_payload())
+            _log('welcome opened')
+
+        def onButtonClick(self, button_id):
+            if button_id == 'submit' and _acknowledge_welcome():
+                self.destroy()
+
+        def _dispose(self):
+            global _welcome_view
+            if _welcome_view is self:
+                _welcome_view = None
+            SimpleDialog._dispose(self)
+
+    factory = dependency.instance(IGuiLoader).entitiesFactory
+    factory.addSettings(GroupedViewSettings(
+        _WELCOME_ALIAS, WelcomeDialog, 'tankmateWelcome.swf', WindowLayer.TOP_WINDOW,
+        '', None, ScopeTemplates.DYNAMIC_SCOPE, isModal=True, canDrag=False))
+    _welcome_factory = factory
+
+
+def _open_welcome():
+    try:
+        import Windowing
+        from frameworks.wulf import WindowLayer
+        from gui.Scaleform.daapi.settings.views import VIEW_ALIAS
+        from gui.Scaleform.framework.managers.loaders import SFViewLoadParams
+    except ImportError:
+        return False
+    app = ServicesLocator.appLoader.getApp(APP_NAME_SPACE.SF_LOBBY)
+    if app is None or app.isModalViewShown():
+        return False
+    view = app.containerManager.getView(WindowLayer.SUB_VIEW)
+    if (not Windowing.isWindowAccessible() or view is None or
+            view.alias not in (VIEW_ALIAS.LOBBY_HANGAR, VIEW_ALIAS.LEGACY_LOBBY_HANGAR)):
+        return False
+    _register_welcome()
+    app.loadView(SFViewLoadParams(_WELCOME_ALIAS))
+    return True
+
+
+def _maybe_show_welcome(scene):
+    global _welcome_shown
+    if not _welcome_read and not _welcome_shown and not _settings_open and scene == 'hangar':
+        if _open_welcome():
+            _welcome_shown = True
+
+
+def _unregister_welcome():
+    global _welcome_factory
+    if _welcome_view is not None:
+        _welcome_view.destroy()
+    if _welcome_factory is not None:
+        _welcome_factory.removeSettings(_WELCOME_ALIAS)
+        _welcome_factory = None
 
 
 def _on_settings_opened():
@@ -1024,6 +1140,9 @@ def _tick():
             for popup in _visible_popups:
                 popup.pause(now)
             return
+        _maybe_show_welcome(scene)
+        if _welcome_view is not None:
+            return
         for popup in _visible_popups[:]:
             popup.resume(now)
             if now >= popup.expires_at:
@@ -1097,6 +1216,7 @@ def init():
 
 def fini():
     global _battle_page_ref, _callback, _scene, _pressed_whisper, _test_friend_lookup
+    _unregister_welcome()
     _unregister_settings()
     if _test_friend_lookup is not None:
         _test_friend_lookup.processor.removeHandler(_test_friend_lookup)

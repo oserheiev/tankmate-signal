@@ -12,10 +12,13 @@ import zlib
 
 MODULE = "res/scripts/client/gui/mods/mod_tankmate_signal.pyc"
 SETTINGS_UI = "res/gui/flash/tankmateSettings.swf"
+WELCOME_UI = "res/gui/flash/tankmateWelcome.swf"
 TEXTURES = "res/gui/maps/icons/tankmate_signal/"
 ASSETS = {
     MODULE: b"\x03\xf3\r\n",  # Python 2.7 bytecode magic
     SETTINGS_UI: b"CWS",
+    WELCOME_UI: b"CWS",
+    TEXTURES + "welcome-labels.json": b"{",
     TEXTURES + "plate.png": b"\x89PNG\r\n\x1a\n",
     TEXTURES + "profile-online.png": b"\x89PNG\r\n\x1a\n",
     TEXTURES + "profile-offline.png": b"\x89PNG\r\n\x1a\n",
@@ -65,6 +68,15 @@ def verify_package(path):
         if len(body) + 8 != size or not all(name in body for name in (
                 b"as_setTankmateSettings", b"tankmate.signal", b"tankmateMods")):
             raise ValueError("Settings UI does not provide the mod settings bridge")
+        welcome = archive.read(WELCOME_UI)
+        try:
+            body = zlib.decompress(welcome[8:])
+            size = struct.unpack("<I", welcome[4:8])[0]
+        except (zlib.error, struct.error):
+            raise ValueError("Invalid welcome UI SWF")
+        if len(body) + 8 != size or not all(name in body for name in (
+                b"TankmateWelcomeUI", b"as_setTankmateWelcome", b"plate.png", b"shortcut-keycap.png")):
+            raise ValueError("Welcome UI does not provide the native welcome bridge")
 
         manifest = ElementTree.fromstring(archive.read(MANIFEST))
         version = manifest.findtext("version", default="")

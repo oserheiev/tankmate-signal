@@ -30,8 +30,8 @@ def load_mod(test_alert=False):
     stub("Keys", KEY_LEFTMOUSE=1, KEY_BACKSPACE=14, KEY_DELETE=211, KEY_RETURN=28, KEY_SPACE=57,
          KEY_ESCAPE=27, KEY_F8=119, KEY_F9=120, KEY_F10=121, KEY_LCONTROL=29, KEY_RCONTROL=157,
          KEY_T=20, KEY_LALT=56, KEY_RALT=184, KEY_LSHIFT=42, KEY_RSHIFT=54)
-    stub("ResMgr", isFile=Mock(), openSection=Mock(return_value=SimpleNamespace(
-        asBinary=(SOURCE.parent / "whisper-labels.json").read_bytes())))
+    stub("ResMgr", isFile=Mock(), openSection=Mock(side_effect=lambda path: SimpleNamespace(
+        asBinary=(SOURCE.parent / Path(path).name).read_bytes())))
     stub("SoundGroups")
     stub("PlayerEvents", g_playerEvents=Mock())
     stub("gui.app_loader.settings", APP_NAME_SPACE=Mock())
