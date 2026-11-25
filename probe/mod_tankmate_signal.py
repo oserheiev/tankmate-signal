@@ -1,6 +1,7 @@
 """Display World of Tanks friend presence changes in the hangar and battle HUD."""
 
 import json
+import os
 import traceback
 import weakref
 from collections import OrderedDict, deque
@@ -19,6 +20,8 @@ from gui.Scaleform.daapi.view.battle.shared.page import SharedPage
 from gui.Scaleform.genConsts.PLAYERS_PANEL_STATE import PLAYERS_PANEL_STATE
 from gui.Scaleform.Waiting import Waiting
 from gui.shared.personality import ServicesLocator
+from gui.shared.utils import flashObject2Dict
+from gui.shared.utils.key_mapping import getBigworldKey
 from gui import SystemMessages
 from helpers import dependency, getClientLanguage
 from helpers.gui_utils import setPixMode
@@ -82,10 +85,21 @@ _whisper_catalog = None
 _whisper_hotkey = None
 _whisper_hotkey_label = 'Ctrl+T'
 _whisper_hotkey_down = False
-_SETTINGS_ID = 'tankmate.signal'
-_MENU_MODIFIERS = {'ALT': -1, 'CTRL': -2, 'SHIFT': -3}
-_settings_api = None
+_MODS_SETTINGS_LINK = 'tankmate.signal'
+_SETTINGS_UI = 'tankmateSettings.swf'
+_dev_mode = False
+_view_settings_class = None
+_view_settings_original = None
+_view_settings_hook = None
+_settings_window_class = None
+_settings_hooks = {}
+_settings_panel = None
 _settings_open = False
+
+
+def _has_presence(user):
+    # BattleUserEntity can carry friend tags but has no global online status.
+    return callable(getattr(user, 'isOnline', None))
 
 
 class FriendPresence(object):
@@ -105,15 +119,19 @@ class FriendPresence(object):
         if self.online is None:
             self.ready_at = now + _ROSTER_QUIET_TIME
 
+    def friends(self):
+        return (user for user in self.users_storage.getList(FriendsFindCriteria())
+                if _has_presence(user))
+
     def initialize(self, now):
         if self.online is None and self.ready_at is not None and now >= self.ready_at:
             self.online = {user.getStorageKey(): bool(user.isOnline())
-                           for user in self.users_storage.getList(FriendsFindCriteria())}
+                           for user in self.friends()}
             self.ready_at = None
             _log('friends list ready (%d)' % len(self.online))
 
     def update(self, user, now):
-        if not user.isFriend():
+        if not _has_presence(user) or not user.isFriend():
             return
         if self.online is None:
             if self.ready_at is not None:
@@ -135,7 +153,8 @@ class FriendPresence(object):
         if self.online is None:
             return
         if action == USER_ACTION_ID.FRIEND_ADDED:
-            self.online[user.getStorageKey()] = bool(user.isOnline())
+            if _has_presence(user):
+                self.online[user.getStorageKey()] = bool(user.isOnline())
         elif action in (USER_ACTION_ID.FRIEND_REMOVED, USER_ACTION_ID.IGNORED_ADDED,
                         USER_ACTION_ID.TMP_IGNORED_ADDED):
             friend_id = user.getStorageKey()
@@ -266,11 +285,15 @@ def _whisper_texture(state, hovered=False):
     return _PLATE_TEXTURE_ROOT + 'whisper-en-' + suffix + '.png'
 
 
-def _load_whisper_hotkey():
+def _load_settings():
+    global _dev_mode
+    _dev_mode = False
     shortcut = _DEFAULT_WHISPER_HOTKEY
     try:
         with open(_CONFIG_PATH, 'rb') as settings_file:
-            shortcut = json.load(settings_file).get('whisper_hotkey', shortcut)
+            settings = json.load(settings_file)
+            shortcut = settings.get('whisper_hotkey', shortcut)
+            _dev_mode = settings.get('dev_mode', False) is True
     except IOError:
         pass
     except (ValueError, AttributeError):
@@ -280,71 +303,73 @@ def _load_whisper_hotkey():
         _set_whisper_hotkey(_DEFAULT_WHISPER_HOTKEY)
 
 
+def _parse_whisper_hotkey(shortcut):
+    if shortcut == '':
+        return None, ''
+    parts = shortcut.upper().replace(' ', '').split('+')
+    modifiers, key_name = parts[:-1], parts[-1]
+    if (not key_name or any(item not in _MODIFIER_KEYS for item in modifiers)
+            or len(set(modifiers)) != len(modifiers)
+            or not key_name.replace('_', '').isalnum()
+            or (key_name in ('F9', 'F10') and set(modifiers) == {'CTRL'})):
+        raise ValueError('invalid or reserved shortcut')
+    key = getattr(Keys, 'KEY_' + key_name)
+    excluded = set(value for pair in _MODIFIER_KEYS.values() for value in pair)
+    excluded.update(getattr(Keys, name, None) for name in (
+        'KEY_NONE', 'KEY_LEFTMOUSE', 'KEY_RIGHTMOUSE', 'KEY_MIDDLEMOUSE', 'KEY_RETURN', 'KEY_ESCAPE'))
+    if key in excluded:
+        raise ValueError('invalid shortcut key')
+    return (key, set(modifiers)), '+'.join([item.title() for item in modifiers] + [key_name])
+
+
 def _set_whisper_hotkey(shortcut):
     global _whisper_hotkey, _whisper_hotkey_label, _whisper_hotkey_down
-    if shortcut == '':
-        _whisper_hotkey = None
-        _whisper_hotkey_label = ''
-        _whisper_hotkey_down = False
-        return True
     try:
-        parts = shortcut.upper().replace(' ', '').split('+')
-        modifiers, key_name = parts[:-1], parts[-1]
-        if (not key_name or any(item not in _MODIFIER_KEYS for item in modifiers)
-                or len(set(modifiers)) != len(modifiers)
-                or not key_name.replace('_', '').isalnum()
-                or (key_name in ('F9', 'F10') and set(modifiers) == {'CTRL'})):
-            raise ValueError('invalid or reserved shortcut')
-        key = getattr(Keys, 'KEY_' + key_name)
-        excluded = set(value for pair in _MODIFIER_KEYS.values() for value in pair)
-        excluded.update(getattr(Keys, name, None) for name in (
-            'KEY_NONE', 'KEY_LEFTMOUSE', 'KEY_RIGHTMOUSE', 'KEY_MIDDLEMOUSE', 'KEY_RETURN', 'KEY_ESCAPE'))
-        if key in excluded:
-            return False
+        binding, label = _parse_whisper_hotkey(shortcut)
     except (ValueError, AttributeError, TypeError):
         return False
-    _whisper_hotkey = (key, set(modifiers))
-    _whisper_hotkey_label = '+'.join([item.title() for item in modifiers] + [key_name])
+    _whisper_hotkey, _whisper_hotkey_label = binding, label
     _whisper_hotkey_down = False
     return True
 
 
-def _menu_keyset():
-    if _whisper_hotkey is None:
-        return []
-    key, modifiers = _whisper_hotkey
-    return [key] + [_MENU_MODIFIERS[name] for name in sorted(modifiers)]
-
-
-def _apply_menu_hotkey(keys):
-    if not keys:
-        return _set_whisper_hotkey('')
-    modifiers, primary = set(), set()
-    for group in keys:
-        for key in (group if isinstance(group, (list, tuple)) else [group]):
-            modifier = next((name for name, code in _MENU_MODIFIERS.items()
-                             if key == code or key in _MODIFIER_KEYS[name]), None)
-            if modifier is None:
-                primary.add(key)
-            else:
-                modifiers.add(modifier)
-    if len(primary) != 1:
-        return False
-    code = primary.pop()
-    names = [name[4:] for name in dir(Keys) if name.startswith('KEY_') and getattr(Keys, name) == code]
-    if not names:
-        return False
-    return _set_whisper_hotkey('+'.join(sorted(modifiers) + [min(names, key=len)]))
-
-
-def _on_settings_changed(linkage, settings):
-    if linkage != _SETTINGS_ID:
-        return
-    if not _apply_menu_hotkey(settings.get('whisper_hotkey', [])):
-        _log('settings hotkey rejected; keeping the previous binding')
-        SystemMessages.pushMessage(_whisper_strings()['settings_hint'], type=SystemMessages.SM_TYPE.Warning)
-        if _settings_api is not None:
-            _settings_api.updateModSettings(_SETTINGS_ID, {'whisper_hotkey': _menu_keyset()})
+def _save_settings(shortcut, dev_mode):
+    try:
+        with open(_CONFIG_PATH, 'rb') as stream:
+            settings = json.load(stream)
+        if not isinstance(settings, dict):
+            settings = {}
+    except (IOError, ValueError):
+        settings = {}
+    settings['whisper_hotkey'] = shortcut
+    settings['dev_mode'] = dev_mode
+    directory = os.path.dirname(_CONFIG_PATH)
+    if not os.path.isdir(directory):
+        os.makedirs(directory)
+    temporary, backup = _CONFIG_PATH + '.tmp', _CONFIG_PATH + '.bak'
+    try:
+        with open(temporary, 'wb') as stream:
+            stream.write((json.dumps(settings, indent=2) + '\n').encode('utf-8'))
+        had_original = os.path.isfile(_CONFIG_PATH)
+        if had_original:
+            # Python 2.7 on Windows cannot rename over an existing file.
+            if os.path.exists(backup):
+                os.remove(backup)
+            os.rename(_CONFIG_PATH, backup)
+        try:
+            os.rename(temporary, _CONFIG_PATH)
+        except OSError:
+            if had_original:
+                os.rename(backup, _CONFIG_PATH)
+            raise
+        if had_original:
+            try:
+                os.remove(backup)
+            except OSError:
+                pass
+    finally:
+        if os.path.isfile(temporary):
+            os.remove(temporary)
 
 
 def _on_settings_opened():
@@ -360,34 +385,179 @@ def _on_settings_closed():
     _settings_open = False
 
 
+def _install_settings_hooks(window_class, view_settings_class):
+    global _settings_window_class, _view_settings_class, _view_settings_original, _view_settings_hook
+    if _settings_window_class is not None:
+        return
+    originals = dict((name, getattr(window_class, name)) for name in (
+        '_populate', '_dispose', '_SettingsWindow__apply', 'onSettingsChange'))
+    original_view_settings = view_settings_class.getDAAPIObject
+
+    def view_settings(settings):
+        result = original_view_settings(settings)
+        if settings.alias == 'settingsWindow':
+            result = dict(result)
+            result['url'] = _SETTINGS_UI
+        return result
+
+    def populate(window, *args, **kwargs):
+        global _settings_panel
+        result = originals['_populate'](window, *args, **kwargs)
+        _on_settings_opened()
+        _settings_panel = ModsSettings(window)
+        _settings_panel.sync_ui()
+        _log('Mods / Tankmate Signal settings ready')
+        return result
+
+    def dispose(window, *args, **kwargs):
+        global _settings_panel
+        if _settings_panel is not None and _settings_panel.window is window:
+            _settings_panel.close()
+            _settings_panel = None
+            _on_settings_closed()
+        return originals['_dispose'](window, *args, **kwargs)
+
+    def apply(window, settings, *args, **kwargs):
+        if _settings_panel is not None and _settings_panel.window is window:
+            # Flash confirms its stock changes after this callback even if a
+            # mod save fails. Never prevent the native settings from applying.
+            _settings_panel.apply()
+        return originals['_SettingsWindow__apply'](window, settings, *args, **kwargs)
+
+    def preview(window, setting_name, value):
+        if setting_name == _MODS_SETTINGS_LINK:
+            if _settings_panel is not None and _settings_panel.window is window:
+                _settings_panel.on_change(flashObject2Dict(value))
+            return
+        return originals['onSettingsChange'](window, setting_name, value)
+
+    for name, hook in (('_populate', populate), ('_dispose', dispose),
+                       ('_SettingsWindow__apply', apply), ('onSettingsChange', preview)):
+        _settings_hooks[name] = (originals[name], hook)
+        setattr(window_class, name, hook)
+    _view_settings_class = view_settings_class
+    _view_settings_original, _view_settings_hook = original_view_settings, view_settings
+    view_settings_class.getDAAPIObject = view_settings
+    _settings_window_class = window_class
+
+
 def _register_settings():
-    global _settings_api
-    if _settings_api is not None:
+    if _settings_window_class is not None:
         return
     try:
+        from gui.Scaleform.daapi.view.common.settings.SettingsWindow import SettingsWindow
+        from gui.Scaleform.framework import GroupedViewSettings
+        _install_settings_hooks(SettingsWindow, GroupedViewSettings)
+        _log('native Mods tab registered')
+    except (ImportError, AttributeError):
+        _log('built-in settings integration unavailable; using JSON configuration')
+
+
+def _unregister_settings():
+    global _settings_window_class, _settings_panel, _view_settings_class
+    global _view_settings_original, _view_settings_hook
+    if _settings_panel is not None:
+        _settings_panel.close()
+        _settings_panel = None
+    if _settings_window_class is not None:
+        for name, (original, hook) in _settings_hooks.items():
+            current = getattr(_settings_window_class, name)
+            if getattr(current, 'im_func', current) is hook:
+                setattr(_settings_window_class, name, original)
+    if _view_settings_class is not None:
+        current = _view_settings_class.getDAAPIObject
+        if getattr(current, 'im_func', current) is _view_settings_hook:
+            _view_settings_class.getDAAPIObject = _view_settings_original
+    _view_settings_class = _view_settings_original = _view_settings_hook = None
+    _settings_hooks.clear()
+    _settings_window_class = None
+    _on_settings_closed()
+
+
+class ModsSettings(object):
+    def __init__(self, window):
+        self.window = window
+        self.shortcut = self.saved_shortcut = _whisper_hotkey_label
+        self.dev_mode = self.saved_dev_mode = _dev_mode
+        self.capturing = False
+        self.error = False
+
+    @property
+    def dirty(self):
+        return self.shortcut != self.saved_shortcut or self.dev_mode != self.saved_dev_mode
+
+    def stage(self, shortcut):
         try:
-            from gui.aslainMenu import g_modsSettingsApi, templates
-        except ImportError:
-            from gui.modsSettingsApi import g_modsSettingsApi, templates
-    except ImportError:
-        return
-    try:
+            _, label = _parse_whisper_hotkey(shortcut)
+        except (ValueError, AttributeError, TypeError):
+            self.error = 'invalid'
+            return False
+        self.shortcut = label
+        self.error = False
+        return True
+
+    def apply(self):
+        global _dev_mode
+        self.capturing = False
+        if not self.dirty:
+            self.sync_ui()
+            return True
+        try:
+            _save_settings(self.shortcut, self.dev_mode)
+        except (IOError, OSError):
+            self.error = 'save'
+            _log('could not save mod settings')
+            SystemMessages.pushMessage(_whisper_strings()['settings_save_error'], type=SystemMessages.SM_TYPE.Warning)
+            self.sync_ui()
+            return False
+        _set_whisper_hotkey(self.shortcut)
+        _dev_mode = self.dev_mode
+        if not _dev_mode:
+            _test_friend_pending.clear()
+            _test_hotkey_down.clear()
+        self.saved_shortcut, self.saved_dev_mode = self.shortcut, self.dev_mode
+        self.error = False
+        self.sync_ui()
+        return True
+
+    def close(self):
+        self.capturing = False
+
+    def sync_ui(self):
         strings = _whisper_strings()
-        template = {'modDisplayName': 'Tankmate Signal', 'column1': [
-            templates.createHotkey(strings['settings_hotkey'], 'whisper_hotkey', _menu_keyset(),
-                                   tooltip=strings['settings_hint'])
-        ], 'column2': []}
-        _settings_api = g_modsSettingsApi
-        saved = _settings_api.setModTemplate(_SETTINGS_ID, template, _on_settings_changed)
-        _settings_api.setModDefaults(_SETTINGS_ID, {'whisper_hotkey': [Keys.KEY_T, _MENU_MODIFIERS['CTRL']]})
-        _settings_api.onWindowOpened += _on_settings_opened
-        _settings_api.onWindowClosed += _on_settings_closed
-        _on_settings_changed(_SETTINGS_ID, saved)
-        _log('Garage hotkey settings registered')
-    except Exception:
-        _settings_api = None
-        _log('Garage settings registration failed')
-        traceback.print_exc()
+        caption = '...' if self.capturing else (self.shortcut or strings['settings_disabled'])
+        if self.capturing and self.error == 'invalid':
+            caption = strings['settings_invalid']
+        self.window.flashObject.as_setTankmateSettings({
+            'hotkeyLabel': strings['settings_hotkey'], 'shortcutLabel': caption,
+            'devLabel': strings['settings_dev_mode'], 'devDescription': strings['settings_dev_description'],
+            'dev_mode': self.dev_mode, 'capturing': self.capturing, 'dirty': self.dirty})
+
+    def on_change(self, value):
+        action = value.get('action')
+        if action == 'dev_mode' and isinstance(value.get('value'), bool):
+            self.dev_mode = value['value']
+        elif action == 'capture':
+            self.capturing = True
+            self.error = False
+        elif action == 'cancel_capture':
+            self.capturing = False
+        elif action == 'key' and self.capturing:
+            self._capture_key(getBigworldKey(value.get('code')))
+        self.sync_ui()
+
+    def _capture_key(self, key):
+        if key == Keys.KEY_ESCAPE:
+            self.capturing = False
+        elif key in (Keys.KEY_BACKSPACE, Keys.KEY_DELETE):
+            self.stage('')
+            self.capturing = False
+        elif not any(key in keys for keys in _MODIFIER_KEYS.values()):
+            names = [name[4:] for name in dir(Keys) if name.startswith('KEY_') and getattr(Keys, name) == key]
+            modifiers = [name for name in ('CTRL', 'ALT', 'SHIFT')
+                         if any(BigWorld.isKeyDown(code) for code in _MODIFIER_KEYS[name])]
+            if names and self.stage('+'.join(modifiers + [min(names, key=len)])):
+                self.capturing = False
 
 
 class NotificationPlate(object):
@@ -619,7 +789,7 @@ def _handle_key_event(event):
                         popup.whisper_action.handleMouseClickEvent(popup.whisper)
                         popup.expires_at = max(popup.expires_at, now + 2.0)
                         return True
-    if event.key in _TEST_HOTKEYS:
+    if _dev_mode and event.key in _TEST_HOTKEYS:
         if not event.isKeyDown():
             was_down = event.key in _test_hotkey_down
             _test_hotkey_down.discard(event.key)
@@ -869,7 +1039,7 @@ def _tick():
                 while _test_friend_pending and len(_visible_popups) < _STACK_LIMIT:
                     test_online = _test_friend_pending[0]
                     friend_key = None
-                    for user in _presence.users_storage.getList(FriendsFindCriteria()):
+                    for user in _presence.friends():
                         if user.getName().lower() == _TEST_FRIEND_NAME.lower():
                             friend_key = user.getStorageKey()
                             break
@@ -892,7 +1062,7 @@ def _tick():
         _log('display check failed')
         traceback.print_exc()
     finally:
-        delay = 0.5
+        delay = 0.05 if _settings_open else 0.5
         if _visible_popups:
             now = BigWorld.time()
             for popup in _visible_popups:
@@ -910,7 +1080,7 @@ def _tick():
 
 def init():
     global _callback, _original_register_component, _original_handle_key_event
-    _load_whisper_hotkey()
+    _load_settings()
     _original_handle_key_event = game.handleKeyEvent
     game.handleKeyEvent = _handle_key_event
     _original_register_component = SharedPage._onRegisterFlashComponent
@@ -926,13 +1096,8 @@ def init():
 
 
 def fini():
-    global _battle_page_ref, _callback, _scene, _pressed_whisper, _test_friend_lookup, _settings_api, _settings_open
-    if _settings_api is not None:
-        _settings_api.onWindowOpened -= _on_settings_opened
-        _settings_api.onWindowClosed -= _on_settings_closed
-        _settings_api.onSettingsChanged -= _on_settings_changed
-        _settings_api = None
-    _settings_open = False
+    global _battle_page_ref, _callback, _scene, _pressed_whisper, _test_friend_lookup
+    _unregister_settings()
     if _test_friend_lookup is not None:
         _test_friend_lookup.processor.removeHandler(_test_friend_lookup)
         _test_friend_lookup.processor.fini()

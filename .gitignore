@@ -1,2 +1,3 @@
 *.pyc
 *.wotmod
+.dev-tools/

@@ -12,13 +12,13 @@ Notifications use an angular panel with a profile silhouette, colored status ind
 
 The button and message follow the current game language, with English as a fallback. The message asks to play in a Platoon and mentions that you are in battle when sent during battle.
 
-To change the shortcut in the Garage, open **Mod Menu → Tankmate Signal**, select **Message hotkey**, press the combination you want, and click **Apply**. The new shortcut works immediately and is saved for future launches. Clearing the binding disables the shortcut.
+Open **Settings → Mods → Tankmate Signal**. Click **Message hotkey**, then press a key combination. Press **Backspace** or **Delete** while capturing to disable the shortcut, or **Esc** to cancel capture. Click the game's **Apply** or **OK** button to save and activate changes. Closing the window without applying discards your edits.
 
-Press **Ctrl+F9** for Sauzer_'s online test notification or **Ctrl+F10** for the offline test notification, regardless of their actual status. These combinations are reserved for testing.
+The **Dev mode** checkbox unlocks test notifications: **Ctrl+F9** for Sauzer_'s online notification and **Ctrl+F10** for offline, regardless of their actual status. Enabling it does not show a notification automatically. Dev mode defaults off and its saved value persists across launches. These combinations remain reserved for testing.
 
-The Garage settings window uses [Aslain Mod Menu](https://github.com/Aslain/modmenu/releases) and its [OpenWG Gameface loader](https://gitlab.com/openwg/wot.gameface/-/releases). Install their `.wotmod` packages alongside Tankmate Signal in the active game version's `mods` folder. The mod also supports an installed `gui.modsSettingsApi` provider.
+**No settings-menu dependencies are needed.** The mod includes its Settings UI extension and uses the game's native tab, key-field, and checkbox components. Aslain Mod Menu and OpenWG are not required. The Controls tab has no Tankmate Signal section.
 
-Without a settings-menu provider, the mod reads `whisper_hotkey` from `mods/configs/tankmate_signal.json`, for example `{ "whisper_hotkey": "CTRL+T" }`. The installer creates this fallback file. Saved Mod Menu settings take precedence when the menu is installed.
+Both values are saved in `mods/configs/tankmate_signal.json`, for example `{ "whisper_hotkey": "CTRL+T", "dev_mode": false }`. You can also edit this file while the game is closed. If it is missing, the mod uses **Ctrl+T** with Dev mode off. Old config files containing only the shortcut remain valid. The mod does not read Aslain/Mod Menu settings.
 
 ## Build and install
 
@@ -35,7 +35,7 @@ To uninstall, close WoT and remove `tankmate-signal.wotmod` from the correspondi
 
 ## Test the notification
 
-Set `_SHOW_TEST_NOTIFICATION = True` near the top of `probe/mod_tankmate_signal.py`, then rebuild, install, and launch the game. One sample alert appears when the hangar or battle HUD is visible. Set it back to `False` and rebuild to disable the sample.
+Enable **Dev mode** in **Settings → Mods → Tankmate Signal**, click **Apply**, and use **Ctrl+F9 / Ctrl+F10** in the hangar or a battle replay. Turn Dev mode off and apply to disable those shortcuts again.
 
 If the sample is missing, search the game's `game.log` for `tankmate-signal.wotmod` to check whether WoT accepted the package, then for `[TankmateSignal]` to check mod initialization and alerts. A `compression not supported` error means the package should be rebuilt with this installer. WoT Safe Mode disables mods.
 
@@ -50,6 +50,16 @@ python tools/verify_package.py probe/tankmate-signal.wotmod
 ```
 
 `-PackageOnly` builds the archive without writing to the game's mods folder. The verifier checks the manifest, assets, ZIP headers, and checksums. Before distributing a build, try the sample alert in the hangar and in a battle replay, including the countdown, and check a real friend status change while minimized and after restoring the window. Rebuild with the sample flag disabled before sharing the package.
+
+Also check **Settings → Mods → Tankmate Signal** in the client: confirm both tab levels, key capture, checkbox description, Apply/OK, Cancel, and the persisted Dev mode value after a restart. Verify that the original Settings tabs still work. The automated UI tests use mocked game APIs and do not verify actual rendering or client input routing.
+
+The bundled `probe/tankmate-settings.swf` is built from the stock Settings UI and `ui/SettingsWindowUI.mods.as`. Regenerate it when the client's Settings UI changes, using Java 17+ and the portable FFDec 26.5.0 distribution:
+
+```powershell
+python tools/build_settings_ui.py --game-root $gameRoot --ffdec 'C:\Tools\ffdec'
+```
+
+The companion JSON records the stock SWF, extension source, and generated asset checksums. Normal packaging and installation use the checked-in SWF and require neither Java nor FFDec.
 
 ## Release from main
 
