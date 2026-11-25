@@ -408,6 +408,7 @@ def _welcome_payload():
             'alerts': strings['alerts'], 'message': strings['message'].format(
                 hotkey=_whisper_hotkey_label) if _whisper_hotkey_label else strings['message_mouse'],
             'battle': strings['battle'], 'settings': strings['settings'],
+            'gotIt': strings['got_it'],
             'shortcut': _whisper_hotkey_label, 'statusImage': _status_texture(True),
             'buttonImage': _whisper_texture('ready')}
 

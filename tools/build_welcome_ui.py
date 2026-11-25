@@ -38,7 +38,7 @@ def main():
         text = source.read_text(encoding='utf-8')
         imports = '\n'.join('   import ' + name + ';' for name in (
             'flash.display.Sprite', 'flash.events.Event', 'flash.text.TextField', 'flash.text.TextFormat',
-            'flash.geom.ColorTransform',
+            'flash.geom.ColorTransform', 'flash.geom.Matrix',
             'net.wg.gui.components.controls.Image'))
         text = text.replace('   import net.wg.gui.dialogs.SimpleDialog;',
                             '   import net.wg.gui.dialogs.SimpleDialog;\n' + imports)
